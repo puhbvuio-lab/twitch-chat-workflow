@@ -54,3 +54,28 @@ def test_returns_empty_tables_without_rows_and_keeps_bounded_zero_windows() -> N
     assert bounded.sentiment_rows == [
         {"start_seconds": 0, "end_seconds": 60, "message_count": 0, "unique_authors": 0, "positive": 0, "neutral": 0, "negative": 0, "interest_signals": 0, "positive_share": 0.0, "neutral_share": 0.0, "negative_share": 0.0}
     ]
+
+
+def test_topic_summary_uses_first_three_unique_nonblank_quotes_and_name_tiebreaker() -> None:
+    """Catches duplicate/blank quote selection and unstable equal-count topic order."""
+    rows = [
+        {"message_id": "a6", "timestamp_seconds": "60", "original_text": "第四句", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b6", "timestamp_seconds": "65", "original_text": "b6", "sentiment": "neutral", "topic": "B"},
+        {"message_id": "a3", "timestamp_seconds": "30", "original_text": "  ", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b1", "timestamp_seconds": "15", "original_text": "b1", "sentiment": "neutral", "topic": "B"},
+        {"message_id": "a2", "timestamp_seconds": "20", "original_text": "第一句", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b5", "timestamp_seconds": "55", "original_text": "b5", "sentiment": "neutral", "topic": "B"},
+        {"message_id": "a1", "timestamp_seconds": "10", "original_text": "第一句", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b2", "timestamp_seconds": "25", "original_text": "b2", "sentiment": "neutral", "topic": "B"},
+        {"message_id": "a5", "timestamp_seconds": "50", "original_text": "第三句", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b4", "timestamp_seconds": "45", "original_text": "b4", "sentiment": "neutral", "topic": "B"},
+        {"message_id": "a4", "timestamp_seconds": "40", "original_text": "第二句", "sentiment": "neutral", "topic": "A"},
+        {"message_id": "b3", "timestamp_seconds": "35", "original_text": "b3", "sentiment": "neutral", "topic": "B"},
+    ]
+
+    summaries = build_analysis_tables(rows, interval_seconds=60).topic_summary_rows
+
+    assert [summary["topic"] for summary in summaries] == ["A", "B"]
+    assert summaries[0]["representative_quote_1"] == "第一句"
+    assert summaries[0]["representative_quote_2"] == "第二句"
+    assert summaries[0]["representative_quote_3"] == "第三句"
