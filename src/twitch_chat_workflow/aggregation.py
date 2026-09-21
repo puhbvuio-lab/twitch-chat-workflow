@@ -46,8 +46,8 @@ def aggregate_chat(input_csv: Path, interval_seconds: int, bounds: tuple[int, in
 
 def aggregate_stage(config: JobConfig, paths: JobPaths) -> Path:
     input_csv = paths.labeled_chat / "labeled_chat.csv" if (paths.labeled_chat / "labeled_chat.csv").is_file() else paths.clean_chat / "clean_chat.csv"
-    output_csv = paths.chat_trends / "trends.csv"
-    output_json = paths.chat_trends / "trends.json"
+    output_csv = paths.chat_trends / "弹幕趋势.csv"
+    output_json = paths.chat_trends / "弹幕趋势.json"
     state = StageStateStore(paths.status)
     fingerprint = stage_fingerprint(config, {"chat": input_csv})
     artifacts = [output_csv, output_json]

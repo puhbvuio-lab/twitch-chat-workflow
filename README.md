@@ -56,7 +56,7 @@ python -m twitch_chat_workflow run --config job.json
 - `01_raw_chat/`：下载器返回的原始 JSONL 弹幕。
 - `02_clean_chat/`：规范化 CSV、被排除记录和修复统计。
 - `03_labeled_chat/`：可选的逐条语义标签及批次结果。
-- `04_chat_trends/`：按时间窗口聚合的 CSV 和 JSON 趋势。
+- `04_chat_trends/`：按时间窗口聚合的 `弹幕趋势.csv` 和 `弹幕趋势.json`。
 - `09_status/`：各阶段的状态、输入指纹和错误摘要。
 
 清洗和标注不会覆盖原始弹幕。只有当脱敏后的配置、输入指纹和预期产物都与上次完成时一致，程序才会跳过已完成阶段；输入变化、产物缺失或批次失败都会安全重跑。

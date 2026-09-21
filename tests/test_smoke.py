@@ -28,6 +28,9 @@ def test_offline_smoke_runs_fake_acquisition_clean_disabled_label_and_one_second
     assert label_chat(config, paths, None) is None
     trends = aggregate_stage(config, paths)
 
+    assert trends.name == "弹幕趋势.csv"
+    assert (paths.chat_trends / "弹幕趋势.json").is_file()
+
     with trends.open(encoding="utf-8", newline="") as input_file:
         rows = list(csv.DictReader(input_file))
     assert [int(row["message_count"]) for row in rows] == [1, 0, 1, 0]
