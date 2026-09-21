@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "twitch-chat-workflow"
+version = "0.1.0"
+description = "Standalone, resumable Twitch VOD chat workflow"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

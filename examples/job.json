@@ -1,0 +1,12 @@
+{
+  "vod_url": "https://www.twitch.tv/videos/REPLACE_WITH_VOD_ID",
+  "output_dir": "output",
+  "start_seconds": 0,
+  "end_seconds": 3600,
+  "labeling": {
+    "enabled": false
+  },
+  "aggregation": {
+    "interval_seconds": 60
+  }
+}
