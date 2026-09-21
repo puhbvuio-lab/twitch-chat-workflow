@@ -1,22 +1,37 @@
-# Twitch Chat Workflow
+# Twitch 弹幕工作流
 
-This is a standalone workflow for acquiring, cleaning, optionally labeling, and aggregating Twitch VOD chat. It does not download or analyze media, and it has no dependency on sibling projects.
+这是一个独立运行的 Twitch VOD 弹幕处理工具，可完成弹幕获取、清洗、可选语义标注和趋势聚合。它不会下载或分析视频、音频，也不依赖其他同级项目。
 
-## Setup
+## 环境与安装
 
-Use Python 3.11 or newer, then install this project and its test tools:
+需要 Python 3.11 或更高版本。安装项目及测试依赖：
 
 ```powershell
 python -m pip install -e ".[dev]"
 ```
 
-Create a job from `examples/job.json`, replace the VOD URL, and choose an output directory. `cookies_from_browser` is runtime-only and is deliberately excluded from saved configuration snapshots.
+如需从 Twitch 获取弹幕，还需安装可选的下载依赖：
 
-The default aggregation interval is 60 seconds; any positive whole-second interval, including 1 second, is valid.
+```powershell
+python -m pip install -e ".[acquisition]"
+```
 
-## Run the workflow
+## 配置任务
 
-Copy `examples/job.json`, set a VOD URL, then invoke individual retryable stages or the complete sequence:
+复制 `examples/job.json`，替换其中的 VOD URL，并选择输出目录。主要配置字段如下：
+
+- `vod_url`：必填，Twitch VOD 地址。
+- `start_seconds`、`end_seconds`：可选，只处理指定时间范围内的弹幕。
+- `output_dir`：任务输出根目录。
+- `cookies_from_browser`：可选，浏览器 Cookie 来源，例如 `chrome` 或 `edge`。
+- `aggregation.interval_seconds`：趋势聚合时间间隔，默认为 60 秒；支持包括 1 秒在内的任意正整数秒。
+- `labeling.enabled`：是否启用语义标注，默认关闭。
+
+`cookies_from_browser` 只在程序运行时传给下载适配器，不会写入任务配置快照或错误记录。请勿在 JSON 配置中填写 Cookie 内容、访问令牌或其他密钥。
+
+## 运行工作流
+
+可以单独运行某个可重试阶段，也可以按顺序运行完整流程：
 
 ```powershell
 python -m twitch_chat_workflow acquire --config job.json
@@ -26,10 +41,39 @@ python -m twitch_chat_workflow aggregate --config job.json
 python -m twitch_chat_workflow run --config job.json
 ```
 
-Each job writes raw JSONL, normalized CSV, optional labeled CSV, trends CSV/JSON, and atomic stage state under its own `output/job-*/` directory. A completed stage is skipped only when its redacted configuration/input fingerprint and all expected artifacts still match; missing artifacts, changed inputs, and failed batches rerun safely. Raw chat is never overwritten by cleaning or labeling.
+各命令用途：
 
-Set `aggregation.interval_seconds` to `1` for one-second windows. Empty windows are intentionally emitted with zero metrics, while message-level timestamps retain their original fractional-second and `timestamp_ms` precision.
+- `acquire`：下载并保存原始弹幕。
+- `clean`：规范时间和文本、修复可确认的乱码并去除完全重复记录。
+- `label`：在启用时为弹幕添加语义标签。
+- `aggregate`：按设定的时间间隔生成弹幕趋势。
+- `run`：依次执行上述全部阶段；任一阶段失败后停止。
 
-`cookies_from_browser` is a runtime-only browser source such as `chrome` or `edge`. It is passed to the acquisition adapter but deliberately omitted from job snapshots and sanitized error records. Do not put cookie values, access tokens, or secrets in the JSON config.
+## 输出与断点续跑
 
-The optional acquisition integration is installed with `pip install -e ".[acquisition]"`. Semantic labeling is disabled by default; applications can supply a fakeable `codex_session` provider with `openai_responses` as its configured fallback. This project only handles VOD chat: it does not download media, inspect video, analyze audio, create CCV/history data, or write Excel reports.
+每个任务写入独立的 `<output_dir>/<job_id>/` 目录，主要产物包括：
+
+- `01_raw_chat/`：下载器返回的原始 JSONL 弹幕。
+- `02_clean_chat/`：规范化 CSV、被排除记录和修复统计。
+- `03_labeled_chat/`：可选的逐条语义标签及批次结果。
+- `04_chat_trends/`：按时间窗口聚合的 CSV 和 JSON 趋势。
+- `09_status/`：各阶段的状态、输入指纹和错误摘要。
+
+清洗和标注不会覆盖原始弹幕。只有当脱敏后的配置、输入指纹和预期产物都与上次完成时一致，程序才会跳过已完成阶段；输入变化、产物缺失或批次失败都会安全重跑。
+
+将 `aggregation.interval_seconds` 设为 `1` 可生成一秒一个窗口的趋势数据。没有弹幕的窗口仍会输出零值指标，同时逐条弹幕保留原始小数秒和 `timestamp_ms` 精度。
+
+## 语义标注说明
+
+语义标注默认关闭。调用方可以提供可替换的 `codex_session` 标注服务，并将 `openai_responses` 配置为回退服务。标注批次失败时会保留可重试状态，不会把失败结果伪装成中性标签。
+
+本项目只处理 VOD 弹幕，不负责下载媒体、检查视频、分析音频、生成 CCV/历史数据或制作 Excel 报告。
+
+## 测试
+
+测试使用离线替身，不会访问 Twitch 或模型服务：
+
+```powershell
+$env:PYTHONPATH = 'src'
+python -m pytest -q
+```
