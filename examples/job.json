@@ -1,12 +1,6 @@
 {
-  "vod_url": "https://www.twitch.tv/videos/REPLACE_WITH_VOD_ID",
+  "vod_url": "https://www.twitch.tv/videos/REPLACE_ME",
   "output_dir": "output",
-  "start_seconds": 0,
-  "end_seconds": 3600,
-  "labeling": {
-    "enabled": false
-  },
-  "aggregation": {
-    "interval_seconds": 60
-  }
+  "aggregation": {"interval_seconds": 60},
+  "labeling": {"enabled": false}
 }

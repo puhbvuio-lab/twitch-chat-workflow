@@ -94,6 +94,18 @@ class StageStateStore:
             completed_at=now,
         )
 
+    def skip(self, stage: str, fingerprint: str) -> None:
+        """Record an intentionally disabled optional stage without creating artifacts."""
+        now = _utc_now()
+        previous = self._read(stage)
+        self._write(
+            stage,
+            status="skipped",
+            fingerprint=fingerprint,
+            artifacts=[],
+            created_at=previous.get("created_at", now) if previous else now,
+        )
+
     def fail(self, stage: str, fingerprint: str, artifacts: list[Path], error: BaseException) -> None:
         """Record a retryable failed stage without retaining secret-bearing error text."""
         now = _utc_now()

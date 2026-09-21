@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+from twitch_chat_workflow.acquisition import acquire_chat
+from twitch_chat_workflow.aggregation import aggregate_stage
+from twitch_chat_workflow.config import JobConfig
+from twitch_chat_workflow.io import JobPaths
+from twitch_chat_workflow.labeling import label_chat
+from twitch_chat_workflow.models import RawMessage
+from twitch_chat_workflow.normalization import normalize_chat
+
+
+class FixtureDownloader:
+    def fetch(self, *_args: object):
+        yield RawMessage(timestamp=0.25, author="viewer", text="hello", message_id="one")
+        yield RawMessage(timestamp=2.5, author="viewer2", text="cafÃ©", message_id="two")
+
+
+def test_offline_smoke_runs_fake_acquisition_clean_disabled_label_and_one_second_aggregation(tmp_path: Path) -> None:
+    config = JobConfig(vod_url="https://www.twitch.tv/videos/123", output_dir=tmp_path, end_seconds=4, aggregation={"interval_seconds": 1})
+    paths = JobPaths.create(config)
+
+    raw = acquire_chat(config, paths, FixtureDownloader())
+    clean = normalize_chat(raw, paths, config)
+    assert clean.is_file()
+    assert label_chat(config, paths, None) is None
+    trends = aggregate_stage(config, paths)
+
+    with trends.open(encoding="utf-8", newline="") as input_file:
+        rows = list(csv.DictReader(input_file))
+    assert [int(row["message_count"]) for row in rows] == [1, 0, 1, 0]

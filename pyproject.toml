@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "Standalone, resumable Twitch VOD chat workflow"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2,<3"]
+dependencies = ["pydantic>=2,<3", "typer>=0.12"]
 
 [project.optional-dependencies]
+acquisition = ["twitch-chat-downloader>=0.2"]
+
 dev = ["pytest>=7"]
 
 [tool.pytest.ini_options]
