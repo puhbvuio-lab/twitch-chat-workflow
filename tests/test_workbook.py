@@ -107,6 +107,35 @@ def test_export_writes_four_readable_sheets_with_charts_and_auditable_original_t
     assert len(workbook["主题"]._charts) == 1
 
 
+def test_export_persists_formula_like_external_text_as_literal_text(tmp_path: Path) -> None:
+    tables = _tables()
+    tables.label_rows[0]["text"] = "=1+1"
+    tables.label_rows[0]["original_text"] = "=1+1"
+    tables.topic_summary_rows[0]["representative_quote_1"] = "=1+1"
+    tables.quote_rows[0]["original_text"] = "=1+1"
+
+    write_analysis_workbook(tables, tmp_path / "弹幕分析.xlsx")
+
+    workbook = openpyxl.load_workbook(tmp_path / "弹幕分析.xlsx", data_only=False)
+    for cell in (
+        workbook["标签明细"]["E2"], workbook["标签明细"]["F2"], workbook["主题"]["I2"], workbook["原话"]["C2"],
+    ):
+        assert cell.value == "=1+1"
+        assert cell.data_type == "s"
+
+
+def test_export_makes_topic_trends_a_separately_filterable_excel_table(tmp_path: Path) -> None:
+    write_analysis_workbook(_tables(), tmp_path / "弹幕分析.xlsx")
+
+    topics = openpyxl.load_workbook(tmp_path / "弹幕分析.xlsx")["主题"]
+    trend_table = topics.tables["TopicTrendTable"]
+    assert trend_table.ref == "A5:H6"
+    assert trend_table.autoFilter.ref == "A5:H6"
+    # Excel allows one freeze pane per sheet: the summary header remains frozen;
+    # the lower detail supplies its own Table header and filter controls.
+    assert topics.freeze_panes == "A2"
+
+
 def test_export_empty_tables_keeps_headers_without_invalid_charts(tmp_path: Path) -> None:
     destination = tmp_path / "弹幕分析.xlsx"
     empty = AnalysisTables(

@@ -9,6 +9,7 @@ from typing import Any, Iterable
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .analysis import AnalysisTables
@@ -62,7 +63,7 @@ def _write_label_detail(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> Non
     ]
     _write_header(sheet, 1, headers)
     for row in rows:
-        sheet.append([
+        _append_external_row(sheet, [
             row.get("timestamp_seconds"), row.get("timestamp_ms"), row.get("timestamp_iso") or None,
             row.get("author", ""), row.get("text", ""), row.get("original_text", ""), row.get("sentiment", ""),
             row.get("topic", ""), _yes_no(row.get("interest_signal")), _yes_no(row.get("encoding_warning")),
@@ -80,7 +81,7 @@ def _write_sentiment_trends(sheet: Worksheet, rows: Iterable[dict[str, Any]]) ->
     header_row = 16 if rows else 1
     _write_header(sheet, header_row, headers)
     for row in rows:
-        sheet.append([
+        _append_external_row(sheet, [
             row.get("start_seconds"), row.get("end_seconds"), row.get("message_count"), row.get("unique_authors"),
             row.get("positive"), row.get("neutral"), row.get("negative"), row.get("positive_share"),
             row.get("neutral_share"), row.get("negative_share"), row.get("interest_signals"),
@@ -103,7 +104,7 @@ def _write_topics(
     ]
     _write_header(sheet, 1, summary_headers)
     for row in summary_rows:
-        sheet.append([
+        _append_external_row(sheet, [
             row.get("topic", ""), row.get("message_count"), row.get("share"), row.get("first_seconds"),
             row.get("last_seconds"), row.get("positive"), row.get("neutral"), row.get("negative"),
             row.get("representative_quote_1", ""), row.get("representative_quote_2", ""),
@@ -124,7 +125,7 @@ def _write_topics(
     trend_headers = ["开始秒", "结束秒", "主题", "弹幕数量", "主题在该窗口内的占比", "正面数量", "中性数量", "负面数量"]
     _write_header(sheet, trend_header_row, trend_headers)
     for row in trend_rows:
-        sheet.append([
+        _append_external_row(sheet, [
             row.get("start_seconds"), row.get("end_seconds"), row.get("topic", ""), row.get("message_count"),
             row.get("topic_share"), row.get("positive"), row.get("neutral"), row.get("negative"),
         ])
@@ -132,13 +133,15 @@ def _write_topics(
         for cell in row:
             cell.alignment = _DATA_ALIGNMENT
         row[4].number_format = _PERCENT_FORMAT
+    if trend_rows:
+        _add_topic_trend_table(sheet, trend_header_row, len(trend_headers))
 
 
 def _write_quotes(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> None:
     headers = ["时间（秒）", "用户", "原话", "主题", "情绪", "消息 ID"]
     _write_header(sheet, 1, headers)
     for row in rows:
-        sheet.append([
+        _append_external_row(sheet, [
             row.get("timestamp_seconds"), row.get("author", ""), row.get("original_text", ""), row.get("topic", ""),
             row.get("sentiment", ""), row.get("message_id", ""),
         ])
@@ -151,6 +154,14 @@ def _write_header(sheet: Worksheet, row: int, headers: list[str]) -> None:
         cell.fill = _HEADER_FILL
         cell.font = _HEADER_FONT
         cell.alignment = _HEADER_ALIGNMENT
+
+
+def _append_external_row(sheet: Worksheet, values: list[Any]) -> None:
+    """Append externally supplied values without allowing formula evaluation."""
+    sheet.append(values)
+    for cell in sheet[sheet.max_row]:
+        if isinstance(cell.value, str) and cell.value.startswith("="):
+            cell.data_type = "s"
 
 
 def _finish_detail_sheet(
@@ -206,6 +217,22 @@ def _add_topic_chart(sheet: Worksheet, row_count: int) -> None:
     chart.height = 8
     chart.width = 18
     sheet.add_chart(chart, "M1")
+
+
+def _add_topic_trend_table(sheet: Worksheet, header_row: int, column_count: int) -> None:
+    """Add independent filter controls for the lower topic-trend detail.
+
+    Excel supports one freeze pane per worksheet, so the summary header remains
+    frozen at ``A2``.  The lower detail therefore uses an Excel Table: it has
+    its own filter drop-downs and Excel keeps its header identifiable while the
+    user works within the table.
+    """
+    table = Table(
+        displayName="TopicTrendTable",
+        ref=f"A{header_row}:{_column_letter(column_count)}{sheet.max_row}",
+    )
+    table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+    sheet.add_table(table)
 
 
 def _verify_workbook(path: Path) -> None:
