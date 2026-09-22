@@ -10,6 +10,7 @@ from .config import JobConfig
 from .io import JobPaths
 from .labeling import label_chat
 from .normalization import normalize_chat
+from .providers import CodexSessionProvider
 
 
 def run_stage(name: str, config_path: Path) -> Path | None:
@@ -20,8 +21,15 @@ def run_stage(name: str, config_path: Path) -> Path | None:
     if name == "clean":
         return normalize_chat(paths.raw_chat / "raw_chat.jsonl", paths, config)
     if name == "label":
-        # Real provider construction is intentionally application-specific; disabled labeling remains offline.
-        return label_chat(config, paths, None)
+        provider = None
+        if config.labeling.enabled:
+            provider = CodexSessionProvider(
+                command=config.labeling.codex_command,
+                model=config.labeling.model,
+                context_messages=config.labeling.context_messages,
+                timeout_seconds=config.labeling.timeout_seconds,
+            )
+        return label_chat(config, paths, provider)
     if name == "aggregate":
         return aggregate_stage(config, paths)
     raise ValueError(f"unknown stage: {name}")

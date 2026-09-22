@@ -158,9 +158,10 @@ def _write_header(sheet: Worksheet, row: int, headers: list[str]) -> None:
 
 def _append_external_row(sheet: Worksheet, values: list[Any]) -> None:
     """Append externally supplied values without allowing formula evaluation."""
-    sheet.append(values)
-    for cell in sheet[sheet.max_row]:
-        if isinstance(cell.value, str) and cell.value.startswith("="):
+    row_number = sheet.max_row + 1
+    for column_number, value in enumerate(values, 1):
+        cell = sheet.cell(row_number, column_number, value)
+        if isinstance(value, str) and value.startswith("="):
             cell.data_type = "s"
 
 
