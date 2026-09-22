@@ -20,7 +20,7 @@ def _tables() -> AnalysisTables:
                 "text": "清洗后的文字",
                 "original_text": "原始弹幕，完整保留。",
                 "sentiment": "positive",
-                "topic": "直播反馈",
+                "raw_topic": "直播反馈", "report_topic": "直播体验", "content_type": "主播内容", "message_type": "评价反馈", "is_bot": False, "needs_review": False, "confidence": "高",
                 "interest_signal": True,
                 "encoding_warning": False,
                 "label_provider": "codex_session",
@@ -46,7 +46,7 @@ def _tables() -> AnalysisTables:
         ),
         topic_summary_rows=(
             {
-                "topic": "直播反馈",
+                "report_topic": "直播体验",
                 "message_count": 2,
                 "share": 1.0,
                 "first_seconds": 1.25,
@@ -63,7 +63,7 @@ def _tables() -> AnalysisTables:
             {
                 "start_seconds": 0,
                 "end_seconds": 60,
-                "topic": "直播反馈",
+                "report_topic": "直播体验",
                 "message_count": 2,
                 "topic_share": 1.0,
                 "positive": 1,
@@ -76,7 +76,7 @@ def _tables() -> AnalysisTables:
                 "timestamp_seconds": 1.25,
                 "author": "alice",
                 "original_text": "原始弹幕，完整保留。",
-                "topic": "直播反馈",
+                "raw_topic": "直播反馈", "report_topic": "直播体验",
                 "sentiment": "positive",
                 "message_id": "msg-1",
             },
@@ -95,8 +95,10 @@ def test_export_writes_four_readable_sheets_with_charts_and_auditable_original_t
     assert workbook["标签明细"].auto_filter.ref is not None
     assert workbook["标签明细"]["F1"].value == "原始弹幕"
     assert workbook["标签明细"]["F2"].value == "原始弹幕，完整保留。"
-    assert workbook["标签明细"]["I2"].value == "是"
-    assert workbook["标签明细"]["J2"].value == "否"
+    assert workbook["标签明细"]["L2"].value == "否"
+    assert workbook["标签明细"]["M2"].value == "否"
+    assert workbook["标签明细"]["N2"].value == "高"
+    assert workbook["标签明细"]["O2"].value == "是"
     assert workbook["情绪趋势"]["H17"].number_format == "0.0%"
     assert workbook["主题"]["I2"].value == "第一条原话"
     assert workbook["主题"]["C2"].value == 1.0

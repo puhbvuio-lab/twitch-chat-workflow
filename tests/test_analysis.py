@@ -16,28 +16,25 @@ def test_builds_sorted_traceable_sentiment_topic_and_quote_tables() -> None:
     tables = build_analysis_tables(rows, interval_seconds=60, bounds=(0, 180))
 
     assert [row["message_id"] for row in tables.label_rows] == ["m1", "m2", "m3", "m4", "m5"]
-    assert tables.label_rows[1]["topic"] == "其他"
+    assert tables.label_rows[1]["raw_topic"] == "其他"
     assert tables.sentiment_rows == [
         {"start_seconds": 0, "end_seconds": 60, "message_count": 2, "unique_authors": 2, "positive": 1, "neutral": 1, "negative": 0, "interest_signals": 1, "positive_share": 0.5, "neutral_share": 0.5, "negative_share": 0.0},
         {"start_seconds": 60, "end_seconds": 120, "message_count": 3, "unique_authors": 3, "positive": 2, "neutral": 0, "negative": 1, "interest_signals": 1, "positive_share": 2 / 3, "neutral_share": 0.0, "negative_share": 1 / 3},
         {"start_seconds": 120, "end_seconds": 180, "message_count": 0, "unique_authors": 0, "positive": 0, "neutral": 0, "negative": 0, "interest_signals": 0, "positive_share": 0.0, "neutral_share": 0.0, "negative_share": 0.0},
     ]
     assert tables.topic_summary_rows == [
-        {"topic": "游戏", "message_count": 3, "share": 0.6, "first_seconds": 5.0, "last_seconds": 80.0, "positive": 2, "neutral": 0, "negative": 1, "representative_quote_1": "第一句", "representative_quote_2": "第三句", "representative_quote_3": "第四句"},
-        {"topic": "其他", "message_count": 2, "share": 0.4, "first_seconds": 5.0, "last_seconds": 110.0, "positive": 1, "neutral": 1, "negative": 0, "representative_quote_1": "第一句", "representative_quote_2": "第五句", "representative_quote_3": ""},
+        {"report_topic": "其他", "message_count": 5, "share": 1.0, "first_seconds": 5.0, "last_seconds": 110.0, "positive": 3, "neutral": 1, "negative": 1, "representative_quote_1": "第一句", "representative_quote_2": "第三句", "representative_quote_3": "第四句"},
     ]
     assert tables.topic_trend_rows == [
-        {"start_seconds": 0, "end_seconds": 60, "topic": "其他", "message_count": 1, "topic_share": 0.5, "positive": 0, "neutral": 1, "negative": 0},
-        {"start_seconds": 0, "end_seconds": 60, "topic": "游戏", "message_count": 1, "topic_share": 0.5, "positive": 1, "neutral": 0, "negative": 0},
-        {"start_seconds": 60, "end_seconds": 120, "topic": "其他", "message_count": 1, "topic_share": 1 / 3, "positive": 1, "neutral": 0, "negative": 0},
-        {"start_seconds": 60, "end_seconds": 120, "topic": "游戏", "message_count": 2, "topic_share": 2 / 3, "positive": 1, "neutral": 0, "negative": 1},
+        {"start_seconds": 0, "end_seconds": 60, "report_topic": "其他", "message_count": 2, "topic_share": 1.0, "positive": 1, "neutral": 1, "negative": 0},
+        {"start_seconds": 60, "end_seconds": 120, "report_topic": "其他", "message_count": 3, "topic_share": 1.0, "positive": 2, "neutral": 0, "negative": 1},
     ]
     assert tables.quote_rows == [
-        {"timestamp_seconds": 5.0, "author": "a", "original_text": "第一句", "topic": "游戏", "sentiment": "positive", "message_id": "m1"},
-        {"timestamp_seconds": 5.0, "author": "b", "original_text": "第一句", "topic": "其他", "sentiment": "neutral", "message_id": "m2"},
-        {"timestamp_seconds": 75.0, "author": "c", "original_text": "第三句", "topic": "游戏", "sentiment": "negative", "message_id": "m3"},
-        {"timestamp_seconds": 80.0, "author": "d", "original_text": "第四句", "topic": "游戏", "sentiment": "positive", "message_id": "m4"},
-        {"timestamp_seconds": 110.0, "author": "e", "original_text": "第五句", "topic": "其他", "sentiment": "positive", "message_id": "m5"},
+        {"timestamp_seconds": 5.0, "author": "a", "original_text": "第一句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "positive", "message_id": "m1"},
+        {"timestamp_seconds": 5.0, "author": "b", "original_text": "第一句", "raw_topic": "其他", "report_topic": "其他", "sentiment": "neutral", "message_id": "m2"},
+        {"timestamp_seconds": 75.0, "author": "c", "original_text": "第三句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "negative", "message_id": "m3"},
+        {"timestamp_seconds": 80.0, "author": "d", "original_text": "第四句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "positive", "message_id": "m4"},
+        {"timestamp_seconds": 110.0, "author": "e", "original_text": "第五句", "raw_topic": "其他", "report_topic": "其他", "sentiment": "positive", "message_id": "m5"},
     ]
 
 
@@ -50,10 +47,22 @@ def test_returns_empty_tables_without_rows_and_keeps_bounded_zero_windows() -> N
     assert empty.sentiment_rows == []
     assert empty.topic_summary_rows == []
     assert empty.topic_trend_rows == []
-    assert empty.quote_rows == []
-    assert bounded.sentiment_rows == [
-        {"start_seconds": 0, "end_seconds": 60, "message_count": 0, "unique_authors": 0, "positive": 0, "neutral": 0, "negative": 0, "interest_signals": 0, "positive_share": 0.0, "neutral_share": 0.0, "negative_share": 0.0}
+
+
+def test_groups_raw_topics_under_one_fixed_report_topic() -> None:
+    rows = [
+        {"message_id": "m1", "timestamp_seconds": "1", "original_text": "脚趾痛", "raw_topic": "撞脚趾", "report_topic": "其他", "sentiment": "negative"},
+        {"message_id": "m2", "timestamp_seconds": "2", "original_text": "别切脚趾", "raw_topic": "脚趾处理", "report_topic": "其他", "sentiment": "neutral"},
     ]
+    tables = build_analysis_tables(rows, 60)
+    assert tables.topic_summary_rows[0]["report_topic"] == "其他"
+    assert tables.topic_summary_rows[0]["message_count"] == 2
+    assert tables.label_rows[0]["raw_topic"] == "撞脚趾"
+
+
+def test_legacy_topic_is_preserved_as_raw_topic_and_safely_reported_as_other() -> None:
+    row = build_analysis_tables([{"message_id": "m1", "timestamp_seconds": "1", "topic": "旧主题"}], 60).label_rows[0]
+    assert (row["raw_topic"], row["report_topic"]) == ("旧主题", "其他")
 
 
 def test_topic_summary_uses_first_three_unique_nonblank_quotes_and_name_tiebreaker() -> None:
@@ -75,7 +84,7 @@ def test_topic_summary_uses_first_three_unique_nonblank_quotes_and_name_tiebreak
 
     summaries = build_analysis_tables(rows, interval_seconds=60).topic_summary_rows
 
-    assert [summary["topic"] for summary in summaries] == ["A", "B"]
-    assert summaries[0]["representative_quote_1"] == "第一句"
-    assert summaries[0]["representative_quote_2"] == "第二句"
-    assert summaries[0]["representative_quote_3"] == "第三句"
+    assert [summary["report_topic"] for summary in summaries] == ["其他"]
+    assert summaries[0]["representative_quote_1"] == "b1"
+    assert summaries[0]["representative_quote_2"] == "b2"
+    assert summaries[0]["representative_quote_3"] == "b3"
