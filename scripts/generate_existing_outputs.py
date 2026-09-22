@@ -1,4 +1,5 @@
 import csv
+import ast
 from pathlib import Path
 from twitch_chat_workflow.analysis import build_analysis_tables
 from twitch_chat_workflow.workbook import write_analysis_workbook
@@ -16,16 +17,26 @@ def load(path):
         for i, r in enumerate(csv.DictReader(f), 1):
             text = r.get("clean_message") or r.get("text") or r.get("message") or r.get("content") or ""
             raw = r.get("raw_message") or r.get("original_text") or r.get("message") or text
+            sentiment = {"正向": "positive", "正面": "positive", "中性": "neutral", "负向": "negative", "负面": "negative"}.get(r.get("sentiment") or r.get("sentiment_label"), "neutral")
+            primary = r.get("primary_module") or r.get("topic_primary") or "其他"
+            secondary = r.get("secondary_module") or r.get("topic_secondary") or ""
+            try:
+                parsed = ast.literal_eval(secondary) if isinstance(secondary, str) and secondary.startswith("[") else secondary
+                secondary = parsed[0] if isinstance(parsed, list) and parsed else (parsed or primary)
+            except (ValueError, SyntaxError):
+                secondary = secondary or primary
+            target = r.get("evaluation_target") or ""
+            direction = r.get("impact_direction") or ("非游戏影响" if any(x in target for x in ("观众", "主播", "社区", "直播")) else "游戏影响" if primary != "其他" else "无法判断")
             rows.append({
                 "message_id": r.get("message_id") or r.get("comment_id") or r.get("id") or f"row-{i:06d}",
                 "timestamp_seconds": r.get("vod_second") or r.get("timestamp_seconds") or r.get("time_in_seconds") or 0,
                 "author": r.get("user_name") or r.get("author") or r.get("username") or "",
                 "text": text, "original_text": raw,
-                "sentiment": r.get("sentiment") or r.get("sentiment_label") or "neutral",
+                "sentiment": sentiment,
                 "raw_topic": r.get("raw_topic") or r.get("topic_raw") or r.get("topic") or "其他",
-                "impact_direction": r.get("impact_direction") or "无法判断",
-                "primary_module": r.get("primary_module") or "其他",
-                "secondary_module": r.get("secondary_module") or r.get("report_topic") or "其他",
+                "impact_direction": direction,
+                "primary_module": primary,
+                "secondary_module": secondary,
                 "needs_review": r.get("needs_review") or "true",
                 "confidence": r.get("confidence") or "低",
                 "interest_signal": r.get("interest_signal") or "false",
@@ -33,8 +44,10 @@ def load(path):
     return rows
 
 for name, source in SOURCES.items():
+    if name == "Lucy":
+        continue
     rows = load(source)
     tables = build_analysis_tables(rows, interval_seconds=60)
-    target = OUT / name / "弹幕分析.xlsx"
+    target = OUT / name / "弹幕分析_修订.xlsx"
     write_analysis_workbook(tables, target)
     print(name, len(rows), target)
