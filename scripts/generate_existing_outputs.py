@@ -10,6 +10,9 @@ SOURCES = {
     "Dinah": Path(r"D:\主播分析结果\图表_20260907\Dinah_chat_first_option\06_弹幕趋势对齐\chat_labeled.csv"),
     "Lucy": Path(r"D:\主播分析结果\弹幕数据\LucyPyre\02_弹幕\twitchchatdownloader_first_option_2854377589.csv"),
 }
+GAME_PRIMARY = {"剧情与世界观", "战斗体验", "探索与互动", "其他整体兴趣"}
+GAME_SECONDARY = {"电影化过场/演出高光", "剧情内容/叙事情绪", "整体剧情世界观感受", "BOSS战", "常规战斗", "综合战斗感受", "跑图与移动", "调查与解谜", "角色兴趣", "整体美术与音声兴趣", "游戏整体兴趣", "其他"}
+NON_GAME = {"直播体验", "主播表现", "观众互动", "技术问题", "技术与直播质量", "系统与机器人", "机器人通知", "生活闲聊", "其他非游戏内容"}
 
 def load(path):
     rows = []
@@ -27,6 +30,17 @@ def load(path):
                 secondary = secondary or primary
             target = r.get("evaluation_target") or ""
             direction = r.get("impact_direction") or ("非游戏影响" if any(x in target for x in ("观众", "主播", "社区", "直播")) else "游戏影响" if primary != "其他" else "无法判断")
+            if primary in NON_GAME or any(x in primary for x in ("直播", "主播", "观众", "机器人", "技术", "闲聊")):
+                direction = "非游戏影响"
+                secondary = "其他"
+            elif primary not in GAME_PRIMARY:
+                direction = "无法判断"
+                primary = "其他"
+                secondary = "其他"
+            elif direction != "非游戏影响":
+                direction = "游戏影响"
+                if secondary not in GAME_SECONDARY:
+                    secondary = "其他"
             rows.append({
                 "message_id": r.get("message_id") or r.get("comment_id") or r.get("id") or f"row-{i:06d}",
                 "timestamp_seconds": r.get("vod_second") or r.get("timestamp_seconds") or r.get("time_in_seconds") or 0,
@@ -48,6 +62,6 @@ for name, source in SOURCES.items():
         continue
     rows = load(source)
     tables = build_analysis_tables(rows, interval_seconds=60)
-    target = OUT / name / "弹幕分析_修订.xlsx"
+    target = OUT / name / "弹幕分析_修订_v2.xlsx"
     write_analysis_workbook(tables, target)
     print(name, len(rows), target)
