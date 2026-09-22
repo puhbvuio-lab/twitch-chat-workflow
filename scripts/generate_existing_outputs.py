@@ -1,0 +1,40 @@
+import csv
+from pathlib import Path
+from twitch_chat_workflow.analysis import build_analysis_tables
+from twitch_chat_workflow.workbook import write_analysis_workbook
+
+OUT = Path(r"D:\主播分析结果\游戏影响分析_20260922")
+SOURCES = {
+    "Sayu": Path(r"D:\主播分析结果\图表_20260907\Sayu_chat_first_option\06_弹幕趋势对齐\chat_labeled.csv"),
+    "Dinah": Path(r"D:\主播分析结果\图表_20260907\Dinah_chat_first_option\06_弹幕趋势对齐\chat_labeled.csv"),
+    "Lucy": Path(r"D:\主播分析结果\弹幕数据\LucyPyre\02_弹幕\twitchchatdownloader_first_option_2854377589.csv"),
+}
+
+def load(path):
+    rows = []
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for i, r in enumerate(csv.DictReader(f), 1):
+            text = r.get("clean_message") or r.get("text") or r.get("message") or r.get("content") or ""
+            raw = r.get("raw_message") or r.get("original_text") or r.get("message") or text
+            rows.append({
+                "message_id": r.get("message_id") or r.get("comment_id") or r.get("id") or f"row-{i:06d}",
+                "timestamp_seconds": r.get("vod_second") or r.get("timestamp_seconds") or r.get("time_in_seconds") or 0,
+                "author": r.get("user_name") or r.get("author") or r.get("username") or "",
+                "text": text, "original_text": raw,
+                "sentiment": r.get("sentiment") or r.get("sentiment_label") or "neutral",
+                "raw_topic": r.get("raw_topic") or r.get("topic_raw") or r.get("topic") or "其他",
+                "impact_direction": r.get("impact_direction") or "无法判断",
+                "primary_module": r.get("primary_module") or "其他",
+                "secondary_module": r.get("secondary_module") or r.get("report_topic") or "其他",
+                "needs_review": r.get("needs_review") or "true",
+                "confidence": r.get("confidence") or "低",
+                "interest_signal": r.get("interest_signal") or "false",
+            })
+    return rows
+
+for name, source in SOURCES.items():
+    rows = load(source)
+    tables = build_analysis_tables(rows, interval_seconds=60)
+    target = OUT / name / "弹幕分析.xlsx"
+    write_analysis_workbook(tables, target)
+    print(name, len(rows), target)
