@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "twitch-chat-workflow"
-version = "0.1.0"
+version = "1.0.0"
 description = "Standalone, resumable Twitch VOD chat workflow"
 readme = "README.md"
 requires-python = ">=3.11"

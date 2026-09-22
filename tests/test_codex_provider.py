@@ -14,7 +14,8 @@ from twitch_chat_workflow.providers import CodexSessionProvider
 def _label(message_id: str, **updates: object) -> dict[str, object]:
     return {
         "message_id": message_id, "sentiment": "neutral", "raw_topic": "其他",
-        "report_topic": "其他", "content_type": "其他", "message_type": "其他",
+        "impact_direction": "无法判断", "primary_module": "其他", "secondary_module": "其他",
+        "content_type": "其他", "message_type": "其他",
         "is_bot": False, "needs_review": False, "confidence": "中",
         "interest_signal": False, **updates,
     }
@@ -39,7 +40,25 @@ class FakeRunner:
 
 def test_codex_session_provider_submits_messages_with_a_structured_schema() -> None:
     """Removing the Codex command/schema contract must break this test."""
-    runner = FakeRunner(json.dumps({"labels": [_label("m1", sentiment="positive", raw_topic="直播反馈", report_topic="直播体验", interest_signal=True)]}))
+    runner = FakeRunner(
+        json.dumps(
+            {
+                "labels": [
+                    _label(
+                        "m1",
+                        sentiment="positive",
+                        raw_topic="直播反馈",
+                        impact_direction="游戏影响",
+                        primary_module="战斗体验",
+                        secondary_module="BOSS战",
+                        content_type="游戏内容",
+                        message_type="评价反馈",
+                        interest_signal=True,
+                    )
+                ]
+            }
+        )
+    )
     provider = CodexSessionProvider(runner=runner, command="codex", timeout_seconds=120)
 
     labels = provider.label(
@@ -48,7 +67,9 @@ def test_codex_session_provider_submits_messages_with_a_structured_schema() -> N
 
     assert labels == [
         MessageLabel(
-            message_id="m1", sentiment="positive", raw_topic="直播反馈", report_topic="直播体验", interest_signal=True
+            message_id="m1", sentiment="positive", raw_topic="直播反馈",
+            impact_direction="游戏影响", primary_module="战斗体验", secondary_module="BOSS战",
+            content_type="游戏内容", message_type="评价反馈", interest_signal=True,
         )
     ]
     assert runner.command is not None
@@ -65,7 +86,8 @@ def test_codex_session_provider_requires_the_complete_fixed_taxonomy() -> None:
     """The semantic contract must preserve raw detail but constrain report labels."""
     runner = FakeRunner(
         '{"labels": [{"message_id": "m1", "sentiment": "neutral", '
-        '"raw_topic": "撞脚趾", "report_topic": "其他", '
+        '"raw_topic": "撞脚趾", "impact_direction": "无法判断", '
+        '"primary_module": "其他", "secondary_module": "其他", '
         '"content_type": "日常话题", "message_type": "信息陈述", '
         '"is_bot": false, "needs_review": true, "confidence": "中", '
         '"interest_signal": false}]}'
@@ -77,17 +99,18 @@ def test_codex_session_provider_requires_the_complete_fixed_taxonomy() -> None:
     )[0]
 
     assert label.raw_topic == "撞脚趾"
-    assert label.report_topic == "其他"
+    assert label.impact_direction == "无法判断"
+    assert label.secondary_module == "其他"
     assert label.needs_review is True
     assert runner.schema is not None
-    assert runner.schema["properties"]["labels"]["items"]["properties"]["report_topic"]["enum"] == [
-        "游戏内容", "直播体验", "主播表现", "观众互动", "技术问题", "角色或剧情", "其他"
+    assert runner.schema["properties"]["labels"]["items"]["properties"]["impact_direction"]["enum"] == [
+        "游戏影响", "非游戏影响", "无法判断"
     ]
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("report_topic", "脚趾处理"), ("confidence", "很高")],
+    [("secondary_module", "脚趾处理"), ("confidence", "很高")],
 )
 def test_codex_session_provider_rejects_values_outside_fixed_taxonomy(
     field: str, value: str
@@ -95,7 +118,8 @@ def test_codex_session_provider_rejects_values_outside_fixed_taxonomy(
     """Free-form report topics or confidence values must not reach exports."""
     payload = {
         "message_id": "m1", "sentiment": "neutral", "raw_topic": "细节",
-        "report_topic": "其他", "content_type": "日常话题", "message_type": "信息陈述",
+        "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "BOSS战",
+        "content_type": "日常话题", "message_type": "信息陈述",
         "is_bot": False, "needs_review": False, "confidence": "中", "interest_signal": False,
     }
     payload[field] = value

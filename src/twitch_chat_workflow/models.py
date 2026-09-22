@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field, model_validator
 
 
 GAME_TAXONOMY = {
-    "剧情与世界观": {"电影化过场／演出高光", "剧情内容／叙事情绪", "整体剧情世界观感受"},
-    "战斗体验": {"BOSS 战", "常规战斗", "综合战斗感受"},
+    "剧情与世界观": {"电影化过场/演出高光", "剧情内容/叙事情绪", "整体剧情世界观感受"},
+    "战斗体验": {"BOSS战", "常规战斗", "综合战斗感受"},
     "探索与互动": {"跑图与移动", "调查与解谜"},
     "其他整体兴趣": {"角色兴趣", "整体美术与音声兴趣", "游戏整体兴趣"},
     "其他": {"其他"},
@@ -21,14 +21,17 @@ class LabelingConfig(BaseModel):
     """Optional semantic-labeling settings."""
 
     enabled: bool = False
-    provider: Literal["codex_session", "openai_responses"] = "codex_session"
-    fallback_provider: Literal["openai_responses"] | None = "openai_responses"
+    provider: Literal["codex_session", "external_api"] = "codex_session"
+    fallback_provider: Literal["external_api"] | None = None
     model: str | None = None
+    base_url: str | None = None
+    api_key_env: str = "GLM_API_KEY"
     batch_size: int = Field(default=50, ge=1)
     concurrency: int = Field(default=1, ge=1)
     context_messages: int = Field(default=0, ge=0)
     codex_command: str = "codex"
     timeout_seconds: int = Field(default=300, ge=1)
+    max_retries: int = Field(default=3, ge=0)
 
 
 class AggregationConfig(BaseModel):

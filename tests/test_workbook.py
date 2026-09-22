@@ -20,13 +20,33 @@ def _tables() -> AnalysisTables:
                 "text": "清洗后的文字",
                 "original_text": "原始弹幕，完整保留。",
                 "sentiment": "positive",
-                "raw_topic": "直播反馈", "report_topic": "直播体验", "content_type": "主播内容", "message_type": "评价反馈", "is_bot": False, "needs_review": False, "confidence": "高",
+                "raw_topic": "BOSS战打得很精彩",
+                "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "BOSS战",
+                "content_type": "游戏内容", "message_type": "评价反馈", "is_bot": False, "needs_review": False, "confidence": "高",
                 "interest_signal": True,
                 "encoding_warning": False,
-                "label_provider": "codex_session",
+                "label_provider": "external_api",
                 "label_model": "test-model",
                 "batch_number": 1,
                 "message_id": "msg-1",
+            },
+            {
+                "timestamp_seconds": 2.5,
+                "timestamp_ms": 2500,
+                "timestamp_iso": "2026-09-21T00:00:02.500Z",
+                "author": "bob",
+                "text": "看不懂这波操作",
+                "original_text": "看不懂这波操作",
+                "sentiment": "neutral",
+                "raw_topic": "意图不明",
+                "impact_direction": "无法判断", "primary_module": "其他", "secondary_module": "其他",
+                "content_type": "其他", "message_type": "其他", "is_bot": False, "needs_review": True, "confidence": "低",
+                "interest_signal": False,
+                "encoding_warning": False,
+                "label_provider": "external_api",
+                "label_model": "test-model",
+                "batch_number": 1,
+                "message_id": "msg-2",
             },
         ),
         sentiment_rows=(
@@ -46,7 +66,7 @@ def _tables() -> AnalysisTables:
         ),
         topic_summary_rows=(
             {
-                "report_topic": "直播体验",
+                "secondary_module": "BOSS战", "report_topic": "BOSS战",
                 "message_count": 2,
                 "share": 1.0,
                 "first_seconds": 1.25,
@@ -63,7 +83,7 @@ def _tables() -> AnalysisTables:
             {
                 "start_seconds": 0,
                 "end_seconds": 60,
-                "report_topic": "直播体验",
+                "secondary_module": "BOSS战", "report_topic": "BOSS战",
                 "message_count": 2,
                 "topic_share": 1.0,
                 "positive": 1,
@@ -76,7 +96,8 @@ def _tables() -> AnalysisTables:
                 "timestamp_seconds": 1.25,
                 "author": "alice",
                 "original_text": "原始弹幕，完整保留。",
-                "raw_topic": "直播反馈", "report_topic": "直播体验",
+                "raw_topic": "BOSS战打得很精彩",
+                "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "BOSS战",
                 "sentiment": "positive",
                 "message_id": "msg-1",
             },
@@ -84,21 +105,24 @@ def _tables() -> AnalysisTables:
     )
 
 
-def test_export_writes_four_readable_sheets_with_charts_and_auditable_original_text(tmp_path: Path) -> None:
+def test_export_writes_five_readable_sheets_with_charts_and_auditable_original_text(tmp_path: Path) -> None:
     destination = tmp_path / "弹幕分析.xlsx"
 
     assert write_analysis_workbook(_tables(), destination) == destination
 
     workbook = openpyxl.load_workbook(destination)
-    assert workbook.sheetnames == ["标签明细", "情绪趋势", "主题", "原话"]
+    assert workbook.sheetnames == ["标签明细", "情绪趋势", "主题", "原话", "人工复核"]
     assert workbook["标签明细"].freeze_panes == "A2"
     assert workbook["标签明细"].auto_filter.ref is not None
     assert workbook["标签明细"]["F1"].value == "原始弹幕"
     assert workbook["标签明细"]["F2"].value == "原始弹幕，完整保留。"
-    assert workbook["标签明细"]["L2"].value == "否"
-    assert workbook["标签明细"]["M2"].value == "否"
-    assert workbook["标签明细"]["N2"].value == "高"
-    assert workbook["标签明细"]["O2"].value == "是"
+    assert workbook["标签明细"]["I2"].value == "游戏影响"
+    assert workbook["标签明细"]["J2"].value == "战斗体验"
+    assert workbook["标签明细"]["K2"].value == "BOSS战"
+    assert workbook["标签明细"]["N2"].value == "否"
+    assert workbook["标签明细"]["O2"].value == "否"
+    assert workbook["标签明细"]["P2"].value == "高"
+    assert workbook["标签明细"]["Q2"].value == "是"
     assert workbook["情绪趋势"]["H17"].number_format == "0.0%"
     assert workbook["主题"]["I2"].value == "第一条原话"
     assert workbook["主题"]["C2"].value == 1.0
@@ -107,6 +131,9 @@ def test_export_writes_four_readable_sheets_with_charts_and_auditable_original_t
     assert workbook["主题"]["E6"].number_format == "0.0%"
     assert len(workbook["情绪趋势"]._charts) == 1
     assert len(workbook["主题"]._charts) == 1
+    # 低置信度且需要复核的记录必须进入人工复核表，并给出复核原因。
+    assert workbook["人工复核"]["A2"].value == "msg-2"
+    assert workbook["人工复核"]["J2"].value == "模型标记复核；影响方向无法判断"
 
 
 def test_export_persists_formula_like_external_text_as_literal_text(tmp_path: Path) -> None:
@@ -147,8 +174,9 @@ def test_export_empty_tables_keeps_headers_without_invalid_charts(tmp_path: Path
     write_analysis_workbook(empty, destination)
 
     workbook = openpyxl.load_workbook(destination)
-    assert workbook.sheetnames == ["标签明细", "情绪趋势", "主题", "原话"]
+    assert workbook.sheetnames == ["标签明细", "情绪趋势", "主题", "原话", "人工复核"]
     assert workbook["标签明细"].max_row == 1
+    assert workbook["人工复核"].max_row == 1
     assert workbook["情绪趋势"]["A2"].value == "没有可分析的弹幕"
     assert workbook["主题"]["A2"].value == "没有可分析的弹幕"
     assert not workbook["情绪趋势"]._charts

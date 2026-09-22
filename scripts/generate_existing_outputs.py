@@ -58,7 +58,7 @@ def load(path):
     return rows
 
 for name, source in SOURCES.items():
-    if name == "Lucy":
+    if name != "Lucy":
         continue
     rows = load(source)
     tables = build_analysis_tables(rows, interval_seconds=60)

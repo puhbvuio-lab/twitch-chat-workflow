@@ -6,11 +6,11 @@ from twitch_chat_workflow.analysis import build_analysis_tables
 def test_builds_sorted_traceable_sentiment_topic_and_quote_tables() -> None:
     """Catches lost empty windows, unstable ordering, or untraceable topic rows."""
     rows = [
-        {"message_id": "m3", "timestamp_seconds": "75", "author": "c", "text": "later", "original_text": "第三句", "sentiment": "negative", "topic": "游戏", "interest_signal": "false"},
-        {"message_id": "m2", "timestamp_seconds": "5", "author": "b", "text": "two", "original_text": "第一句", "sentiment": "neutral", "topic": "", "interest_signal": "false"},
-        {"message_id": "m1", "timestamp_seconds": "5", "author": "a", "text": "one", "original_text": "第一句", "sentiment": "positive", "topic": "游戏", "interest_signal": "true"},
-        {"message_id": "m5", "timestamp_seconds": "110", "author": "e", "text": "five", "original_text": "第五句", "sentiment": "positive", "topic": "其他", "interest_signal": "true"},
-        {"message_id": "m4", "timestamp_seconds": "80", "author": "d", "text": "four", "original_text": "第四句", "sentiment": "positive", "topic": "游戏", "interest_signal": "false"},
+        {"message_id": "m3", "timestamp_seconds": "75", "author": "c", "text": "later", "original_text": "第三句", "sentiment": "negative", "topic": "游戏", "interest_signal": "false", "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "常规战斗"},
+        {"message_id": "m2", "timestamp_seconds": "5", "author": "b", "text": "two", "original_text": "第一句", "sentiment": "neutral", "topic": "", "interest_signal": "false", "impact_direction": "无法判断", "primary_module": "其他", "secondary_module": "其他"},
+        {"message_id": "m1", "timestamp_seconds": "5", "author": "a", "text": "one", "original_text": "第一句", "sentiment": "positive", "topic": "游戏", "interest_signal": "true", "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "BOSS战"},
+        {"message_id": "m5", "timestamp_seconds": "110", "author": "e", "text": "five", "original_text": "第五句", "sentiment": "positive", "topic": "其他", "interest_signal": "true", "impact_direction": "游戏影响", "primary_module": "剧情与世界观", "secondary_module": "剧情内容/叙事情绪"},
+        {"message_id": "m4", "timestamp_seconds": "80", "author": "d", "text": "four", "original_text": "第四句", "sentiment": "positive", "topic": "游戏", "interest_signal": "false", "impact_direction": "非游戏影响", "primary_module": "技术与直播质量", "secondary_module": "技术与直播质量"},
     ]
 
     tables = build_analysis_tables(rows, interval_seconds=60, bounds=(0, 180))
@@ -22,19 +22,28 @@ def test_builds_sorted_traceable_sentiment_topic_and_quote_tables() -> None:
         {"start_seconds": 60, "end_seconds": 120, "message_count": 3, "unique_authors": 3, "positive": 2, "neutral": 0, "negative": 1, "interest_signals": 1, "positive_share": 2 / 3, "neutral_share": 0.0, "negative_share": 1 / 3},
         {"start_seconds": 120, "end_seconds": 180, "message_count": 0, "unique_authors": 0, "positive": 0, "neutral": 0, "negative": 0, "interest_signals": 0, "positive_share": 0.0, "neutral_share": 0.0, "negative_share": 0.0},
     ]
-    assert tables.topic_summary_rows == [
-        {"report_topic": "其他", "message_count": 5, "share": 1.0, "first_seconds": 5.0, "last_seconds": 110.0, "positive": 3, "neutral": 1, "negative": 1, "representative_quote_1": "第一句", "representative_quote_2": "第三句", "representative_quote_3": "第四句"},
+    # BOSS战与常规战斗保持独立，非游戏技术弹幕不得混入游戏影响模块。
+    assert [(row["secondary_module"], row["message_count"]) for row in tables.topic_summary_rows] == [
+        ("BOSS战", 1), ("其他", 1), ("剧情内容/叙事情绪", 1), ("常规战斗", 1), ("技术与直播质量", 1),
     ]
+    assert tables.topic_summary_rows[0] == {
+        "secondary_module": "BOSS战", "report_topic": "BOSS战", "message_count": 1, "share": 0.2,
+        "first_seconds": 5.0, "last_seconds": 5.0, "positive": 1, "neutral": 0, "negative": 0,
+        "representative_quote_1": "第一句", "representative_quote_2": "", "representative_quote_3": "",
+    }
     assert tables.topic_trend_rows == [
-        {"start_seconds": 0, "end_seconds": 60, "report_topic": "其他", "message_count": 2, "topic_share": 1.0, "positive": 1, "neutral": 1, "negative": 0},
-        {"start_seconds": 60, "end_seconds": 120, "report_topic": "其他", "message_count": 3, "topic_share": 1.0, "positive": 2, "neutral": 0, "negative": 1},
+        {"start_seconds": 0, "end_seconds": 60, "secondary_module": "BOSS战", "report_topic": "BOSS战", "message_count": 1, "topic_share": 0.5, "positive": 1, "neutral": 0, "negative": 0},
+        {"start_seconds": 0, "end_seconds": 60, "secondary_module": "其他", "report_topic": "其他", "message_count": 1, "topic_share": 0.5, "positive": 0, "neutral": 1, "negative": 0},
+        {"start_seconds": 60, "end_seconds": 120, "secondary_module": "剧情内容/叙事情绪", "report_topic": "剧情内容/叙事情绪", "message_count": 1, "topic_share": 1 / 3, "positive": 1, "neutral": 0, "negative": 0},
+        {"start_seconds": 60, "end_seconds": 120, "secondary_module": "常规战斗", "report_topic": "常规战斗", "message_count": 1, "topic_share": 1 / 3, "positive": 0, "neutral": 0, "negative": 1},
+        {"start_seconds": 60, "end_seconds": 120, "secondary_module": "技术与直播质量", "report_topic": "技术与直播质量", "message_count": 1, "topic_share": 1 / 3, "positive": 1, "neutral": 0, "negative": 0},
     ]
     assert tables.quote_rows == [
-        {"timestamp_seconds": 5.0, "author": "a", "original_text": "第一句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "positive", "message_id": "m1"},
-        {"timestamp_seconds": 5.0, "author": "b", "original_text": "第一句", "raw_topic": "其他", "report_topic": "其他", "sentiment": "neutral", "message_id": "m2"},
-        {"timestamp_seconds": 75.0, "author": "c", "original_text": "第三句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "negative", "message_id": "m3"},
-        {"timestamp_seconds": 80.0, "author": "d", "original_text": "第四句", "raw_topic": "游戏", "report_topic": "其他", "sentiment": "positive", "message_id": "m4"},
-        {"timestamp_seconds": 110.0, "author": "e", "original_text": "第五句", "raw_topic": "其他", "report_topic": "其他", "sentiment": "positive", "message_id": "m5"},
+        {"timestamp_seconds": 5.0, "author": "a", "original_text": "第一句", "raw_topic": "游戏", "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "BOSS战", "sentiment": "positive", "message_id": "m1"},
+        {"timestamp_seconds": 5.0, "author": "b", "original_text": "第一句", "raw_topic": "其他", "impact_direction": "无法判断", "primary_module": "其他", "secondary_module": "其他", "sentiment": "neutral", "message_id": "m2"},
+        {"timestamp_seconds": 75.0, "author": "c", "original_text": "第三句", "raw_topic": "游戏", "impact_direction": "游戏影响", "primary_module": "战斗体验", "secondary_module": "常规战斗", "sentiment": "negative", "message_id": "m3"},
+        {"timestamp_seconds": 80.0, "author": "d", "original_text": "第四句", "raw_topic": "游戏", "impact_direction": "非游戏影响", "primary_module": "技术与直播质量", "secondary_module": "技术与直播质量", "sentiment": "positive", "message_id": "m4"},
+        {"timestamp_seconds": 110.0, "author": "e", "original_text": "第五句", "raw_topic": "其他", "impact_direction": "游戏影响", "primary_module": "剧情与世界观", "secondary_module": "剧情内容/叙事情绪", "sentiment": "positive", "message_id": "m5"},
     ]
 
 

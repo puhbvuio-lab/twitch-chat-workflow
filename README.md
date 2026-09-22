@@ -73,12 +73,29 @@ python -m twitch_chat_workflow run --config job.json
 
 ## Excel 分析工作簿
 
-标注全部成功后，`aggregate` 和 `run` 会生成 `04_chat_trends/弹幕分析.xlsx`，包含四个工作表：
+标注全部成功后，`aggregate` 和 `run` 会生成 `04_chat_trends/弹幕分析.xlsx`，包含五个工作表：
 
 - `标签明细`：逐条弹幕的清洗文本、原话、情绪、主题、兴趣信号和标注批次。
 - `情绪趋势`：按 `aggregation.interval_seconds` 分桶的正面/中性/负面数量和占比，并附占比折线图。
 - `主题`：主题数量汇总、情绪分布、代表性原话、时间窗口 × 主题趋势，并附主题 Top 10 柱状图。
 - `原话`：按时间排序的原话、用户、主题、情绪和消息 ID，便于人工回看。
+- `人工复核`：收录低置信度、无法判断或模型主动标记复核的记录，可填写人工结论和备注。
+
+语义标注默认使用当前机器的 Codex CLI 登录态。也可以使用 `external_api` provider 调用兼容 Anthropic Messages 接口的外部模型；API 密钥只从 `api_key_env` 指定的环境变量读取，不会写入配置快照或批次文件。例如：
+
+```json
+{
+  "labeling": {
+    "enabled": true,
+    "provider": "external_api",
+    "base_url": "https://api.example.com",
+    "api_key_env": "MODEL_API_KEY",
+    "model": "your-model",
+    "batch_size": 50,
+    "concurrency": 3
+  }
+}
+```
 
 工作簿只在所有标签批次成功后原子生成；已有完整文件不会被失败运行覆盖。
 

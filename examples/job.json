@@ -2,5 +2,5 @@
   "vod_url": "https://www.twitch.tv/videos/REPLACE_ME",
   "output_dir": "output",
   "aggregation": {"interval_seconds": 60},
-  "labeling": {"enabled": true, "provider": "codex_session", "batch_size": 50, "timeout_seconds": 300}
+  "labeling": {"enabled": true, "provider": "codex_session", "model": "gpt-5.6-luna", "batch_size": 50, "concurrency": 3, "timeout_seconds": 300}
 }
