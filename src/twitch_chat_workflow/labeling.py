@@ -6,6 +6,7 @@ import csv
 import json
 from pathlib import Path
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -49,39 +50,26 @@ def label_chat(config: JobConfig, paths: JobPaths, provider: SemanticLabelProvid
     state.start("label", fingerprint, artifacts)
     labels: list[MessageLabel] = []
     try:
-        for offset in range(0, len(messages), config.labeling.batch_size):
-            number = offset // config.labeling.batch_size + 1
-            batch = messages[offset : offset + config.labeling.batch_size]
+        batches = [(offset // config.labeling.batch_size + 1, messages[offset : offset + config.labeling.batch_size]) for offset in range(0, len(messages), config.labeling.batch_size)]
+        def process(item: tuple[int, list[ChatMessage]]) -> tuple[int, list[MessageLabel]]:
+            number, batch = item
             batch_path = paths.labeled_chat / f"batch-{number:04d}.json"
             expected = [message.message_id for message in batch]
-            cached = _load_reusable_batch(
-                batch_path,
-                number=number,
-                provider_name=provider.name,
-                model=config.labeling.model,
-                input_fingerprint=fingerprint,
-                expected_ids=expected,
-            )
-            if cached is None:
-                batch_labels = provider.label(batch)
-                received = [label.message_id for label in batch_labels]
-                if len(received) != len(set(received)) or received != expected:
-                    raise RuntimeError(f"batch-{number:04d} returned incomplete or out-of-order labels")
-                normalized = _normalize_labels(
-                    batch_labels, provider.name, config.labeling.model, number
-                )
-                write_json_atomic(
-                    batch_path,
-                    {
-                        "batch_number": number,
-                        "provider": provider.name,
-                        "input_fingerprint": fingerprint,
-                        "rows": [label.model_dump(mode="json") for label in normalized],
-                    },
-                )
-            else:
-                normalized = cached
-            labels.extend(normalized)
+            cached = _load_reusable_batch(batch_path, number=number, provider_name=provider.name, model=config.labeling.model, input_fingerprint=fingerprint, expected_ids=expected)
+            if cached is not None:
+                return number, cached
+            batch_labels = provider.label(batch)
+            received = [label.message_id for label in batch_labels]
+            if len(received) != len(set(received)) or received != expected:
+                raise RuntimeError(f"batch-{number:04d} returned incomplete or out-of-order labels")
+            normalized = _normalize_labels(batch_labels, provider.name, config.labeling.model, number)
+            write_json_atomic(batch_path, {"batch_number": number, "provider": provider.name, "input_fingerprint": fingerprint, "rows": [label.model_dump(mode="json") for label in normalized]})
+            return number, normalized
+        with ThreadPoolExecutor(max_workers=max(1, config.labeling.concurrency)) as executor:
+            futures = [executor.submit(process, item) for item in batches]
+            completed = [future.result() for future in as_completed(futures)]
+        for _, batch_labels in sorted(completed, key=lambda pair: pair[0]):
+            labels.extend(batch_labels)
         _write_labeled(output_path, messages, labels)
         state.complete("label", fingerprint, artifacts)
     except BaseException as error:
@@ -172,10 +160,10 @@ def _read_messages(path: Path) -> list[ChatMessage]:
 
 def _write_labeled(path: Path, messages: list[ChatMessage], labels: list[MessageLabel]) -> None:
     labels_by_id = {label.message_id: label for label in labels}
-    fields = ["message_id", "timestamp_seconds", "timestamp_ms", "timestamp_iso", "author", "text", "original_text", "encoding_warning", "sentiment", "raw_topic", "report_topic", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal", "label_provider", "label_model", "batch_number"]
+    fields = ["message_id", "timestamp_seconds", "timestamp_ms", "timestamp_iso", "author", "text", "original_text", "encoding_warning", "sentiment", "raw_topic", "report_topic", "impact_direction", "primary_module", "secondary_module", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal", "label_provider", "label_model", "batch_number"]
     with path.open("w", encoding="utf-8", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         for message in messages:
             label = labels_by_id[message.message_id]
-            writer.writerow({**message.model_dump(), **label.model_dump(exclude={"message_id", "provider", "model", "batch_number"}), "interest_signal": str(label.interest_signal).lower(), "is_bot": str(label.is_bot).lower(), "needs_review": str(label.needs_review).lower(), "label_provider": label.provider, "label_model": label.model or "", "batch_number": label.batch_number})
+            writer.writerow({**message.model_dump(), **label.model_dump(exclude={"message_id", "provider", "model", "batch_number"}), "report_topic": label.secondary_module, "interest_signal": str(label.interest_signal).lower(), "is_bot": str(label.is_bot).lower(), "needs_review": str(label.needs_review).lower(), "label_provider": label.provider, "label_model": label.model or "", "batch_number": label.batch_number})

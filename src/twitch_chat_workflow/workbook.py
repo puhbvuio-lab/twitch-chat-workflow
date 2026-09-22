@@ -15,7 +15,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .analysis import AnalysisTables
 
 
-_SHEET_NAMES = ["标签明细", "情绪趋势", "主题", "原话"]
+_SHEET_NAMES = ["标签明细", "情绪趋势", "主题", "原话", "人工复核"]
 _HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
 _HEADER_FONT = Font(color="FFFFFF", bold=True)
 _HEADER_ALIGNMENT = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -41,11 +41,13 @@ def write_analysis_workbook(tables: AnalysisTables, destination: Path) -> Path:
         trends = workbook.create_sheet("情绪趋势")
         topics = workbook.create_sheet("主题")
         quotes = workbook.create_sheet("原话")
+        review = workbook.create_sheet("人工复核")
 
         _write_label_detail(detail, tables.label_rows)
         _write_sentiment_trends(trends, tables.sentiment_rows)
         _write_topics(topics, tables.topic_summary_rows, tables.topic_trend_rows)
         _write_quotes(quotes, tables.quote_rows)
+        _write_review(review, tables.label_rows)
 
         workbook.save(temporary_path)
         _verify_workbook(temporary_path)
@@ -58,17 +60,17 @@ def write_analysis_workbook(tables: AnalysisTables, destination: Path) -> Path:
 
 def _write_label_detail(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> None:
     headers = [
-        "时间（秒）", "时间（毫秒）", "ISO 时间", "用户", "清洗文本", "原始弹幕", "情绪", "原始主题", "报告主题", "内容类型", "消息类型", "是否机器人", "是否需要人工复核", "置信度", "兴趣信号", "编码警告", "标注服务", "标注模型", "批次号", "消息 ID",
+        "时间（秒）", "时间（毫秒）", "ISO 时间", "用户", "清洗文本", "原始弹幕", "情绪", "原始主题", "影响方向", "一级模块", "二级模块", "内容类型", "消息类型", "是否机器人", "是否需要人工复核", "置信度", "兴趣信号", "编码警告", "标注服务", "标注模型", "批次号", "消息 ID",
     ]
     _write_header(sheet, 1, headers)
     for row in rows:
         _append_external_row(sheet, [
             row.get("timestamp_seconds"), row.get("timestamp_ms"), row.get("timestamp_iso") or None,
             row.get("author", ""), row.get("text", ""), row.get("original_text", ""), row.get("sentiment", ""),
-            row.get("raw_topic", ""), row.get("report_topic", ""), row.get("content_type", ""), row.get("message_type", ""), _yes_no(row.get("is_bot")), _yes_no(row.get("needs_review")), row.get("confidence", ""), _yes_no(row.get("interest_signal")), _yes_no(row.get("encoding_warning")),
+            row.get("raw_topic", ""), row.get("impact_direction", ""), row.get("primary_module", ""), row.get("secondary_module", ""), row.get("content_type", ""), row.get("message_type", ""), _yes_no(row.get("is_bot")), _yes_no(row.get("needs_review")), row.get("confidence", ""), _yes_no(row.get("interest_signal")), _yes_no(row.get("encoding_warning")),
             row.get("label_provider", ""), row.get("label_model") or None, row.get("batch_number"), row.get("message_id", ""),
         ])
-    _finish_detail_sheet(sheet, headers, wrap_columns={5, 6}, widths=[12,14,25,18,35,48,12,18,18,16,16,12,16,12,12,12,18,18,12,22])
+    _finish_detail_sheet(sheet, headers, wrap_columns={5, 6}, widths=[12,14,25,18,35,48,12,18,18,18,20,16,16,12,16,12,12,12,18,18,12,22])
 
 
 def _write_sentiment_trends(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> None:
@@ -98,13 +100,13 @@ def _write_topics(
     summary_rows = list(summary_rows)
     trend_rows = list(trend_rows)
     summary_headers = [
-        "报告主题", "弹幕数量", "占比", "首次出现秒", "末次出现秒", "正面数量", "中性数量", "负面数量",
+        "二级主题", "弹幕数量", "占比", "首次出现秒", "末次出现秒", "正面数量", "中性数量", "负面数量",
         "代表性原话 1", "代表性原话 2", "代表性原话 3",
     ]
     _write_header(sheet, 1, summary_headers)
     for row in summary_rows:
         _append_external_row(sheet, [
-            row.get("report_topic", ""), row.get("message_count"), row.get("share"), row.get("first_seconds"),
+            row.get("secondary_module", ""), row.get("message_count"), row.get("share"), row.get("first_seconds"),
             row.get("last_seconds"), row.get("positive"), row.get("neutral"), row.get("negative"),
             row.get("representative_quote_1", ""), row.get("representative_quote_2", ""),
             row.get("representative_quote_3", ""),
@@ -125,7 +127,7 @@ def _write_topics(
     _write_header(sheet, trend_header_row, trend_headers)
     for row in trend_rows:
         _append_external_row(sheet, [
-            row.get("start_seconds"), row.get("end_seconds"), row.get("report_topic", ""), row.get("message_count"),
+            row.get("start_seconds"), row.get("end_seconds"), row.get("secondary_module", ""), row.get("message_count"),
             row.get("topic_share"), row.get("positive"), row.get("neutral"), row.get("negative"),
         ])
     for row in sheet.iter_rows(min_row=trend_header_row + 1, max_row=sheet.max_row, max_col=len(trend_headers)):
@@ -137,13 +139,29 @@ def _write_topics(
 
 
 def _write_quotes(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> None:
-    headers = ["时间（秒）", "用户", "原话", "原始主题", "报告主题", "情绪", "消息 ID"]
+    headers = ["时间（秒）", "用户", "原话", "原始主题", "影响方向", "一级模块", "二级模块", "情绪", "消息 ID"]
     _write_header(sheet, 1, headers)
     for row in rows:
         _append_external_row(sheet, [
-            row.get("timestamp_seconds"), row.get("author", ""), row.get("original_text", ""), row.get("raw_topic", ""), row.get("report_topic", ""), row.get("sentiment", ""), row.get("message_id", ""),
+            row.get("timestamp_seconds"), row.get("author", ""), row.get("original_text", ""), row.get("raw_topic", ""), row.get("impact_direction", ""), row.get("primary_module", ""), row.get("secondary_module", ""), row.get("sentiment", ""), row.get("message_id", ""),
         ])
-    _finish_detail_sheet(sheet, headers, wrap_columns={3}, widths=[12,18,55,20,20,12,22])
+    _finish_detail_sheet(sheet, headers, wrap_columns={3}, widths=[12,18,55,20,18,18,20,12,22])
+
+
+def _write_review(sheet: Worksheet, rows: Iterable[dict[str, Any]]) -> None:
+    headers = ["消息 ID", "时间（秒）", "用户", "原话", "影响方向", "一级模块", "二级模块", "情绪", "置信度", "复核原因", "复核结果", "复核备注"]
+    _write_header(sheet, 1, headers)
+    for row in rows:
+        confidence = row.get("confidence")
+        low_confidence = isinstance(confidence, (int, float)) and confidence < 0.65
+        if not (row.get("needs_review") or row.get("impact_direction") == "无法判断" or low_confidence):
+            continue
+        reasons = []
+        if row.get("needs_review"): reasons.append("模型标记复核")
+        if row.get("impact_direction") == "无法判断": reasons.append("影响方向无法判断")
+        if low_confidence: reasons.append("置信度偏低")
+        _append_external_row(sheet, [row.get("message_id", ""), row.get("timestamp_seconds"), row.get("author", ""), row.get("original_text", ""), row.get("impact_direction", ""), row.get("primary_module", ""), row.get("secondary_module", ""), row.get("sentiment", ""), row.get("confidence", ""), "；".join(reasons), "", ""])
+    _finish_detail_sheet(sheet, headers, wrap_columns={4, 12}, widths=[22,12,18,55,18,18,20,12,12,28,14,32])
 
 
 def _write_header(sheet: Worksheet, row: int, headers: list[str]) -> None:

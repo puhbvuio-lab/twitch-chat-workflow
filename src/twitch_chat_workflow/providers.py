@@ -46,17 +46,24 @@ class _CodexResponse(BaseModel):
         if not isinstance(value, dict) or not isinstance(value.get("labels"), list):
             return value
         required = {
-            "message_id", "sentiment", "raw_topic", "report_topic", "content_type",
+            "message_id", "sentiment", "raw_topic", "impact_direction", "primary_module", "secondary_module", "content_type",
             "message_type", "is_bot", "needs_review", "confidence", "interest_signal",
         }
         for label in value["labels"]:
+            if isinstance(label, dict) and label.get("report_topic") == "其他" and "impact_direction" not in label:
+                label["impact_direction"] = "无法判断"
+                label["primary_module"] = "其他"
+                label["secondary_module"] = "其他"
+                label.pop("report_topic", None)
             if not isinstance(label, dict) or set(label) != required:
                 raise ValueError("each label must contain exactly the required fields")
             if (
                 not isinstance(label["message_id"], str)
                 or not isinstance(label["sentiment"], str)
                 or not isinstance(label["raw_topic"], str)
-                or not isinstance(label["report_topic"], str)
+                or not isinstance(label["impact_direction"], str)
+                or not isinstance(label["primary_module"], str)
+                or not isinstance(label["secondary_module"], str)
                 or not isinstance(label["content_type"], str)
                 or not isinstance(label["message_type"], str)
                 or type(label["is_bot"]) is not bool
@@ -83,7 +90,9 @@ def _label_schema() -> dict[str, object]:
                         "message_id": {"type": "string"},
                         "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative"]},
                         "raw_topic": {"type": "string"},
-                        "report_topic": {"type": "string", "enum": ["游戏内容", "直播体验", "主播表现", "观众互动", "技术问题", "角色或剧情", "其他"]},
+                        "impact_direction": {"type": "string", "enum": ["游戏影响", "非游戏影响", "无法判断"]},
+                        "primary_module": {"type": "string"},
+                        "secondary_module": {"type": "string"},
                         "content_type": {"type": "string", "enum": ["游戏内容", "直播互动", "主播内容", "技术与平台", "日常话题", "社区文化", "其他"]},
                         "message_type": {"type": "string", "enum": ["评价反馈", "提问求助", "信息陈述", "玩笑梗图", "表情或刷屏", "机器人通知", "其他"]},
                         "is_bot": {"type": "boolean"},
@@ -91,7 +100,7 @@ def _label_schema() -> dict[str, object]:
                         "confidence": {"type": "string", "enum": ["高", "中", "低"]},
                         "interest_signal": {"type": "boolean"},
                     },
-                    "required": ["message_id", "sentiment", "raw_topic", "report_topic", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal"],
+                    "required": ["message_id", "sentiment", "raw_topic", "impact_direction", "primary_module", "secondary_module", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal"],
                 },
             }
         },
@@ -205,7 +214,8 @@ class CodexSessionProvider:
         return (
             "请仅根据以下 Twitch 弹幕原话及其相邻上下文逐条标注。不得臆造主播身份、事件或未出现的事实。"
                 "情绪只能为 positive、neutral、negative；raw_topic 使用简洁中文描述原话细节；"
-                "report_topic 只能为游戏内容、直播体验、主播表现、观众互动、技术问题、角色或剧情、其他；"
+                "impact_direction 只能为游戏影响、非游戏影响、无法判断；游戏影响必须从剧情与世界观、战斗体验、探索与互动、其他整体兴趣中选择一级模块，并从固定二级模板选择；"
+                "非游戏影响必须从主播表现、观众互动、技术与直播质量、系统与机器人、生活闲聊、其他非游戏内容中选择，一级和二级模块同名；无法判断必须使用其他/其他；"
                 "content_type、message_type、confidence 必须服从 JSON Schema 枚举。机器人或自动通知必须 is_bot=true 且 message_type=机器人通知；"
                 "语义不完整、讽刺歧义或多主题无法判断时 needs_review=true，并优先 report_topic=其他。"
                 "interest_signal、is_bot、needs_review 必须为布尔值。输出必须保持输入 message_id 的顺序，且每个 ID 恰好一次。"

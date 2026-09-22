@@ -54,10 +54,9 @@ def _normalize_row(row: dict[str, str]) -> dict[str, Any]:
     result["_timestamp"] = float(result.get("timestamp_seconds", 0))
     legacy_topic = str(result.get("topic") or "").strip()
     result["raw_topic"] = str(result.get("raw_topic") or legacy_topic or "其他").strip() or "其他"
-    report_topic = str(result.get("report_topic") or "其他").strip() or "其他"
-    if report_topic not in _REPORT_TOPICS:
-        raise ValueError("report_topic must use the fixed taxonomy")
-    result["report_topic"] = report_topic
+    result["impact_direction"] = str(result.get("impact_direction") or "无法判断")
+    result["primary_module"] = str(result.get("primary_module") or "其他")
+    result["secondary_module"] = str(result.get("secondary_module") or result.get("report_topic") or "其他")
     result["sentiment"] = str(result.get("sentiment") or "neutral")
     result["_interest_signal"] = _as_bool(result.get("interest_signal"))
     return result
@@ -106,12 +105,13 @@ def _topic_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     total = len(rows)
     by_topic: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        by_topic.setdefault(row["report_topic"], []).append(row)
+        by_topic.setdefault(row["secondary_module"], []).append(row)
     summaries: list[dict[str, Any]] = []
     for topic, members in by_topic.items():
         quotes = _representative_quotes(members)
         counts = {sentiment: sum(row["sentiment"] == sentiment for row in members) for sentiment in _SENTIMENTS}
         summaries.append({
+            "secondary_module": topic,
             "report_topic": topic,
             "message_count": len(members),
             "share": len(members) / total if total else 0.0,
@@ -122,7 +122,7 @@ def _topic_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "representative_quote_2": quotes[1] if len(quotes) > 1 else "",
             "representative_quote_3": quotes[2] if len(quotes) > 2 else "",
         })
-    return sorted(summaries, key=lambda row: (-row["message_count"], row["report_topic"]))
+    return sorted(summaries, key=lambda row: (-row["message_count"], row["secondary_module"]))
 
 
 def _representative_quotes(members: list[dict[str, Any]]) -> list[str]:
@@ -144,12 +144,13 @@ def _topic_trend_rows(windows: list[tuple[int, int, list[dict[str, Any]]]]) -> l
         total = len(members)
         by_topic: dict[str, list[dict[str, Any]]] = {}
         for row in members:
-            by_topic.setdefault(row["report_topic"], []).append(row)
+            by_topic.setdefault(row["secondary_module"], []).append(row)
         for topic in sorted(by_topic):
             topic_members = by_topic[topic]
             trends.append({
                 "start_seconds": start,
                 "end_seconds": end,
+                "secondary_module": topic,
                 "report_topic": topic,
                 "message_count": len(topic_members),
                 "topic_share": len(topic_members) / total if total else 0.0,
@@ -159,7 +160,9 @@ def _topic_trend_rows(windows: list[tuple[int, int, list[dict[str, Any]]]]) -> l
 
 
 def _public_label_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in row.items() if not key.startswith("_")}
+    public = {key: value for key, value in row.items() if not key.startswith("_")}
+    public.setdefault("report_topic", public.get("secondary_module", "其他"))
+    return public
 
 
 def _quote_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -168,7 +171,9 @@ def _quote_row(row: dict[str, Any]) -> dict[str, Any]:
         "author": str(row.get("author", "")),
         "original_text": str(row.get("original_text", "")),
         "raw_topic": row["raw_topic"],
-        "report_topic": row["report_topic"],
+        "impact_direction": row["impact_direction"],
+        "primary_module": row["primary_module"],
+        "secondary_module": row["secondary_module"],
         "sentiment": row["sentiment"],
         "message_id": row["message_id"],
     }
