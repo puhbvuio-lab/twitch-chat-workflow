@@ -241,3 +241,14 @@ def test_subprocess_runner_redacts_json_formatted_credentials(monkeypatch) -> No
         providers.run_codex(["codex"], "input", 12)
 
     assert "super-secret-token" not in str(raised.value)
+def test_codex_provider_preserves_failed_raw_response_for_diagnostics() -> None:
+    raw = '{"labels":[{"message_id":"m1","sentiment":"neutral"}]}'
+    provider = CodexSessionProvider(runner=FakeRunner(raw))
+
+    with pytest.raises(RuntimeError) as raised:
+        provider.label([ChatMessage(message_id="m1", timestamp_seconds=1, text="x", original_text="x")])
+
+    assert getattr(raised.value, "raw_response", None) == raw
+    validation_errors = getattr(raised.value, "validation_errors", None)
+    assert validation_errors
+    json.dumps(validation_errors)

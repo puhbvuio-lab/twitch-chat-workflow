@@ -199,3 +199,31 @@ def test_load_valid_batch_rejects_duplicate_or_out_of_order_ids(tmp_path: Path) 
     )
 
     assert _load_valid_batch(path, ["m1", "m2"]) is None
+
+
+def test_labeling_persists_failed_model_response_diagnostics(tmp_path: Path) -> None:
+    config, paths = _prepare_paths(tmp_path, ["m1"])
+    raw_response = '{"labels":[{"message_id":"m1","primary_module":"战斗体验","secondary_module":"BOSS 战"}]}'
+
+    class FailingProvider:
+        name = "codex_session"
+
+        def label(self, messages: list[ChatMessage]) -> list[MessageLabel]:
+            error = RuntimeError("Model response did not match label schema")
+            error.raw_response = raw_response  # type: ignore[attr-defined]
+            error.validation_errors = [  # type: ignore[attr-defined]
+                {"loc": ["labels", 0], "msg": "game impact primary/secondary taxonomy mismatch"}
+            ]
+            raise error
+
+    with pytest.raises(RuntimeError, match="did not match"):
+        label_chat(config, paths, FailingProvider())
+
+    diagnostic = json.loads(
+        (paths.status / "model_responses" / "batch-0001.failure.json").read_text(encoding="utf-8")
+    )
+    assert diagnostic["batch_number"] == 1
+    assert diagnostic["message_ids"] == ["m1"]
+    assert diagnostic["provider"] == "codex_session"
+    assert diagnostic["raw_response"] == raw_response
+    assert diagnostic["validation_errors"][0]["loc"] == ["labels", 0]

@@ -216,9 +216,14 @@ def parse_label_response(output: str, expected_ids: list[str]) -> list[MessageLa
     try:
         response = _CodexResponse.model_validate_json(output, strict=True)
     except (ValidationError, ValueError, json.JSONDecodeError) as error:
-        raise RuntimeError(
-            f"Model response did not match label schema ({type(error).__name__})"
-        ) from error
+        wrapped = RuntimeError(f"Model response did not match label schema ({type(error).__name__})")
+        wrapped.raw_response = output  # type: ignore[attr-defined]
+        wrapped.validation_errors = (  # type: ignore[attr-defined]
+            error.errors(include_url=False, include_context=False)
+            if isinstance(error, ValidationError)
+            else [{"msg": str(error)}]
+        )
+        raise wrapped from error
     labels = response.labels
     received_ids = [label.message_id for label in labels]
     if len(received_ids) != len(set(received_ids)):

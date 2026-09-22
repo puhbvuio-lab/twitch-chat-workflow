@@ -66,8 +66,30 @@ def label_chat(config: JobConfig, paths: JobPaths, provider: SemanticLabelProvid
             write_json_atomic(batch_path, {"batch_number": number, "provider": provider.name, "input_fingerprint": fingerprint, "rows": [label.model_dump(mode="json") for label in normalized]})
             return number, normalized
         with ThreadPoolExecutor(max_workers=max(1, config.labeling.concurrency)) as executor:
-            futures = [executor.submit(process, item) for item in batches]
-            completed = [future.result() for future in as_completed(futures)]
+            futures = {executor.submit(process, item): item for item in batches}
+            completed = []
+            for future in as_completed(futures):
+                number, batch = futures[future]
+                try:
+                    completed.append(future.result())
+                except BaseException as error:
+                    raw_response = getattr(error, "raw_response", None)
+                    validation_errors = getattr(error, "validation_errors", None)
+                    if raw_response is not None or validation_errors is not None:
+                        diagnostic_dir = paths.status / "model_responses"
+                        diagnostic_dir.mkdir(parents=True, exist_ok=True)
+                        write_json_atomic(
+                            diagnostic_dir / f"batch-{number:04d}.failure.json",
+                            {
+                                "batch_number": number,
+                                "message_ids": [message.message_id for message in batch],
+                                "provider": provider.name,
+                                "model": config.labeling.model,
+                                "raw_response": raw_response,
+                                "validation_errors": validation_errors or [],
+                            },
+                        )
+                    raise
         for _, batch_labels in sorted(completed, key=lambda pair: pair[0]):
             labels.extend(batch_labels)
         _write_labeled(output_path, messages, labels)
