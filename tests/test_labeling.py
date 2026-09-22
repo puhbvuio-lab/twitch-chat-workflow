@@ -96,6 +96,30 @@ def test_labeling_reuses_only_a_valid_matching_completed_batch(tmp_path: Path) -
         assert [row["message_id"] for row in csv.DictReader(input_file)] == ["m1", "m2"]
 
 
+def test_labeling_persists_full_fixed_taxonomy_fields(tmp_path: Path) -> None:
+    """The final CSV must retain all audit labels emitted by the provider."""
+    config, paths = _prepare_paths(tmp_path, ["m1"])
+
+    class RichProvider:
+        name = "codex_session"
+
+        def label(self, messages: list[ChatMessage]) -> list[MessageLabel]:
+            return [MessageLabel(
+                message_id=messages[0].message_id, raw_topic="撞脚趾", report_topic="其他",
+                content_type="日常话题", message_type="信息陈述", is_bot=False,
+                needs_review=True, confidence="中", interest_signal=False,
+            )]
+
+    output = label_chat(config, paths, RichProvider())
+
+    assert output is not None
+    with output.open(encoding="utf-8", newline="") as input_file:
+        row = next(csv.DictReader(input_file))
+    assert row["raw_topic"] == "撞脚趾"
+    assert row["report_topic"] == "其他"
+    assert row["needs_review"] == "true"
+
+
 def test_labeling_reruns_a_cache_when_the_clean_input_fingerprint_changes(tmp_path: Path) -> None:
     """Reusing same-ID labels after the message text changes is a stale-label bug."""
     config, paths = _prepare_paths(tmp_path, ["m1"])

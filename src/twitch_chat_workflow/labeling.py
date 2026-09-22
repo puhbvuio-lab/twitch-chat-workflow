@@ -148,7 +148,7 @@ def _normalize_labels(
     return [
         label.model_copy(
             update={
-                "topic": label.topic.strip() or "其他",
+                "raw_topic": label.raw_topic.strip() or "其他",
                 "provider": provider_name,
                 "model": label.model or model,
                 "batch_number": batch_number,
@@ -172,10 +172,10 @@ def _read_messages(path: Path) -> list[ChatMessage]:
 
 def _write_labeled(path: Path, messages: list[ChatMessage], labels: list[MessageLabel]) -> None:
     labels_by_id = {label.message_id: label for label in labels}
-    fields = ["message_id", "timestamp_seconds", "timestamp_ms", "timestamp_iso", "author", "text", "original_text", "encoding_warning", "sentiment", "topic", "interest_signal", "label_provider", "label_model", "batch_number"]
+    fields = ["message_id", "timestamp_seconds", "timestamp_ms", "timestamp_iso", "author", "text", "original_text", "encoding_warning", "sentiment", "raw_topic", "report_topic", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal", "label_provider", "label_model", "batch_number"]
     with path.open("w", encoding="utf-8", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         for message in messages:
             label = labels_by_id[message.message_id]
-            writer.writerow({**message.model_dump(), "sentiment": label.sentiment, "topic": label.topic, "interest_signal": str(label.interest_signal).lower(), "label_provider": label.provider, "label_model": label.model or "", "batch_number": label.batch_number})
+            writer.writerow({**message.model_dump(), **label.model_dump(exclude={"message_id", "provider", "model", "batch_number"}), "interest_signal": str(label.interest_signal).lower(), "is_bot": str(label.is_bot).lower(), "needs_review": str(label.needs_review).lower(), "label_provider": label.provider, "label_model": label.model or "", "batch_number": label.batch_number})

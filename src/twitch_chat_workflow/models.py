@@ -56,7 +56,19 @@ class MessageLabel(BaseModel):
 
     message_id: str
     sentiment: Literal["positive", "neutral", "negative"] = "neutral"
-    topic: str = ""
+    raw_topic: str = "其他"
+    report_topic: Literal[
+        "游戏内容", "直播体验", "主播表现", "观众互动", "技术问题", "角色或剧情", "其他"
+    ] = "其他"
+    content_type: Literal[
+        "游戏内容", "直播互动", "主播内容", "技术与平台", "日常话题", "社区文化", "其他"
+    ] = "其他"
+    message_type: Literal[
+        "评价反馈", "提问求助", "信息陈述", "玩笑梗图", "表情或刷屏", "机器人通知", "其他"
+    ] = "其他"
+    is_bot: bool = False
+    needs_review: bool = False
+    confidence: Literal["高", "中", "低"] = "中"
     interest_signal: bool = False
     provider: str = ""
     model: str | None = None

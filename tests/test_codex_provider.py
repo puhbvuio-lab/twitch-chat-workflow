@@ -11,6 +11,15 @@ from twitch_chat_workflow.models import ChatMessage, MessageLabel
 from twitch_chat_workflow.providers import CodexSessionProvider
 
 
+def _label(message_id: str, **updates: object) -> dict[str, object]:
+    return {
+        "message_id": message_id, "sentiment": "neutral", "raw_topic": "其他",
+        "report_topic": "其他", "content_type": "其他", "message_type": "其他",
+        "is_bot": False, "needs_review": False, "confidence": "中",
+        "interest_signal": False, **updates,
+    }
+
+
 class FakeRunner:
     def __init__(self, result: str) -> None:
         self.result = result
@@ -30,10 +39,7 @@ class FakeRunner:
 
 def test_codex_session_provider_submits_messages_with_a_structured_schema() -> None:
     """Removing the Codex command/schema contract must break this test."""
-    runner = FakeRunner(
-        '{"labels": [{"message_id": "m1", "sentiment": "positive", '
-        '"topic": "直播反馈", "interest_signal": true}]}'
-    )
+    runner = FakeRunner(json.dumps({"labels": [_label("m1", sentiment="positive", raw_topic="直播反馈", report_topic="直播体验", interest_signal=True)]}))
     provider = CodexSessionProvider(runner=runner, command="codex", timeout_seconds=120)
 
     labels = provider.label(
@@ -42,7 +48,7 @@ def test_codex_session_provider_submits_messages_with_a_structured_schema() -> N
 
     assert labels == [
         MessageLabel(
-            message_id="m1", sentiment="positive", topic="直播反馈", interest_signal=True
+            message_id="m1", sentiment="positive", raw_topic="直播反馈", report_topic="直播体验", interest_signal=True
         )
     ]
     assert runner.command is not None
@@ -55,15 +61,69 @@ def test_codex_session_provider_submits_messages_with_a_structured_schema() -> N
     assert runner.schema["required"] == ["labels"]
 
 
+def test_codex_session_provider_requires_the_complete_fixed_taxonomy() -> None:
+    """The semantic contract must preserve raw detail but constrain report labels."""
+    runner = FakeRunner(
+        '{"labels": [{"message_id": "m1", "sentiment": "neutral", '
+        '"raw_topic": "撞脚趾", "report_topic": "其他", '
+        '"content_type": "日常话题", "message_type": "信息陈述", '
+        '"is_bot": false, "needs_review": true, "confidence": "中", '
+        '"interest_signal": false}]}'
+    )
+    provider = CodexSessionProvider(runner=runner)
+
+    label = provider.label(
+        [ChatMessage(message_id="m1", timestamp_seconds=1, text="脚趾好痛", original_text="脚趾好痛")]
+    )[0]
+
+    assert label.raw_topic == "撞脚趾"
+    assert label.report_topic == "其他"
+    assert label.needs_review is True
+    assert runner.schema is not None
+    assert runner.schema["properties"]["labels"]["items"]["properties"]["report_topic"]["enum"] == [
+        "游戏内容", "直播体验", "主播表现", "观众互动", "技术问题", "角色或剧情", "其他"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("report_topic", "脚趾处理"), ("confidence", "很高")],
+)
+def test_codex_session_provider_rejects_values_outside_fixed_taxonomy(
+    field: str, value: str
+) -> None:
+    """Free-form report topics or confidence values must not reach exports."""
+    payload = {
+        "message_id": "m1", "sentiment": "neutral", "raw_topic": "细节",
+        "report_topic": "其他", "content_type": "日常话题", "message_type": "信息陈述",
+        "is_bot": False, "needs_review": False, "confidence": "中", "interest_signal": False,
+    }
+    payload[field] = value
+    provider = CodexSessionProvider(runner=FakeRunner(json.dumps({"labels": [payload]})))
+
+    with pytest.raises(RuntimeError, match="did not match label schema"):
+        provider.label([ChatMessage(message_id="m1", timestamp_seconds=1, text="一", original_text="一")])
+
+
+@pytest.mark.parametrize(
+    ("labels", "message"),
+    [([_label("m1"), _label("m1")], "duplicate message IDs"), ([ _label("m2"), _label("m1")], "input order")],
+)
+def test_codex_session_provider_rejects_misaligned_complete_labels(
+    labels: list[dict[str, object]], message: str
+) -> None:
+    provider = CodexSessionProvider(runner=FakeRunner(json.dumps({"labels": labels})))
+    messages = [
+        ChatMessage(message_id="m1", timestamp_seconds=1, text="一", original_text="一"),
+        ChatMessage(message_id="m2", timestamp_seconds=2, text="二", original_text="二"),
+    ]
+    with pytest.raises(RuntimeError, match=message):
+        provider.label(messages)
+
+
 def test_codex_session_provider_supplies_only_configured_neighboring_context() -> None:
     """Ignoring context_messages would allow unrelated batch messages to influence a label."""
-    runner = FakeRunner(
-        '{"labels": ['
-        '{"message_id": "m1", "sentiment": "neutral", "topic": "其他", "interest_signal": false}, '
-        '{"message_id": "m2", "sentiment": "neutral", "topic": "其他", "interest_signal": false}, '
-        '{"message_id": "m3", "sentiment": "neutral", "topic": "其他", "interest_signal": false}'
-        ']}'
-    )
+    runner = FakeRunner(json.dumps({"labels": [_label("m1"), _label("m2"), _label("m3")]}))
     provider = CodexSessionProvider(runner=runner, context_messages=1)
 
     provider.label(
@@ -86,8 +146,8 @@ def test_codex_session_provider_supplies_only_configured_neighboring_context() -
     [
         ("not-json", "did not match label schema"),
         ('{"labels": [{"sentiment": "positive", "topic": "x", "interest_signal": true}]}', "did not match label schema"),
-        ('{"labels": [{"message_id": "m1", "sentiment": "positive", "topic": "x", "interest_signal": true}, {"message_id": "m1", "sentiment": "neutral", "topic": "y", "interest_signal": false}]}', "duplicate message IDs"),
-        ('{"labels": [{"message_id": "m2", "sentiment": "positive", "topic": "x", "interest_signal": true}, {"message_id": "m1", "sentiment": "neutral", "topic": "y", "interest_signal": false}]}', "input order"),
+        ('{"labels": [{"message_id": "m1", "sentiment": "positive", "topic": "x", "interest_signal": true}, {"message_id": "m1", "sentiment": "neutral", "topic": "y", "interest_signal": false}]}', "did not match label schema"),
+        ('{"labels": [{"message_id": "m2", "sentiment": "positive", "topic": "x", "interest_signal": true}, {"message_id": "m1", "sentiment": "neutral", "topic": "y", "interest_signal": false}]}', "did not match label schema"),
         ('{"labels": [{"message_id": "m1", "sentiment": "mixed", "topic": "x", "interest_signal": true}]}', "did not match label schema"),
         ('{"labels": [{"message_id": "m1", "sentiment": "positive", "topic": "x", "interest_signal": "true"}]}', "did not match label schema"),
         ('{"labels": [{"message_id": "m1", "sentiment": "positive", "topic": "x", "interest_signal": true, "access_token": "super-secret-token"}]}', "did not match label schema"),
