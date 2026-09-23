@@ -86,7 +86,7 @@ def test_external_api_provider_submits_anthropic_style_request_and_parses_labels
     assert payload["max_tokens"] == 8192
     assert payload["messages"][0]["role"] == "user"
     assert '"message_id": "m1"' in payload["messages"][0]["content"]
-    assert "impact_direction" in payload["messages"][0]["content"]
+    assert "topic_code" in payload["messages"][0]["content"]
     assert timeout_seconds == 300
 
 

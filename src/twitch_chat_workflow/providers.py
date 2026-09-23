@@ -17,7 +17,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from .models import ChatMessage, MessageLabel
+from .models import ChatMessage, MessageLabel, TOPIC_CODES
 
 
 class SemanticLabelProvider(Protocol):
@@ -55,6 +55,15 @@ class _CodexResponse(BaseModel):
             "message_type", "is_bot", "needs_review", "confidence", "interest_signal",
         }
         for label in value["labels"]:
+            if isinstance(label, dict) and "topic_code" in label:
+                wire_required = required - {"impact_direction", "primary_module", "secondary_module"} | {"topic_code"}
+                if set(label) != wire_required:
+                    raise ValueError("topic_code labels must contain exactly the required fields")
+                code = label["topic_code"]
+                if not isinstance(code, str) or code not in TOPIC_CODES:
+                    raise ValueError(f"unknown topic_code for message_id={label.get('message_id')}: {code!r}")
+                label.pop("topic_code")
+                label["impact_direction"], label["primary_module"], label["secondary_module"] = TOPIC_CODES[code]
             if isinstance(label, dict) and label.get("report_topic") == "其他" and "impact_direction" not in label:
                 label["impact_direction"] = "无法判断"
                 label["primary_module"] = "其他"
@@ -95,9 +104,7 @@ def _label_schema() -> dict[str, object]:
                         "message_id": {"type": "string"},
                         "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative"]},
                         "raw_topic": {"type": "string"},
-                        "impact_direction": {"type": "string", "enum": ["游戏影响", "非游戏影响", "无法判断"]},
-                        "primary_module": {"type": "string"},
-                        "secondary_module": {"type": "string"},
+                        "topic_code": {"type": "string", "enum": list(TOPIC_CODES)},
                         "content_type": {"type": "string", "enum": ["游戏内容", "直播互动", "主播内容", "技术与平台", "日常话题", "社区文化", "其他"]},
                         "message_type": {"type": "string", "enum": ["评价反馈", "提问求助", "信息陈述", "玩笑梗图", "表情或刷屏", "机器人通知", "其他"]},
                         "is_bot": {"type": "boolean"},
@@ -105,7 +112,7 @@ def _label_schema() -> dict[str, object]:
                         "confidence": {"type": "string", "enum": ["高", "中", "低"]},
                         "interest_signal": {"type": "boolean"},
                     },
-                    "required": ["message_id", "sentiment", "raw_topic", "impact_direction", "primary_module", "secondary_module", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal"],
+                    "required": ["message_id", "sentiment", "raw_topic", "topic_code", "content_type", "message_type", "is_bot", "needs_review", "confidence", "interest_signal"],
                 },
             }
         },
@@ -173,42 +180,33 @@ def build_label_prompt(messages: list[ChatMessage], context_messages: int) -> st
     return (
         "请仅根据以下 Twitch 弹幕原话及其相邻上下文逐条标注。不得臆造主播身份、事件或未出现的事实。"
             "情绪只能为 positive、neutral、negative；raw_topic 使用简洁中文描述原话细节；"
-            "impact_direction 只能为游戏影响、非游戏影响、无法判断；游戏影响必须从剧情与世界观、战斗体验、探索与互动、其他整体兴趣中选择一级模块，并从固定二级模板选择；"
-            "非游戏影响必须从主播表现、观众互动、技术与直播质量、系统与机器人、生活闲聊、其他非游戏内容中选择，一级和二级模块同名；无法判断必须使用其他/其他；"
+            "主题仅输出一个固定 topic_code，由程序生成影响方向、一级模块、二级模块，不要输出这三个字段。"
             "content_type、message_type、confidence 必须服从 JSON Schema 枚举。机器人或自动通知必须 is_bot=true 且 message_type=机器人通知；"
-            "语义不完整、讽刺歧义或多主题无法判断时 needs_review=true，并优先 report_topic=其他。"
+            "语义不完整、讽刺歧义或多主题无法判断时 needs_review=true；无法确定归属时用 undetermined，不要猜测。"
+            "明确属于游戏但不在细分模板内时用 game_other；明确非游戏但不在细分模板内时用 non_game_other。"
             "interest_signal、is_bot、needs_review 必须为布尔值。输出必须保持输入 message_id 的顺序，且每个 ID 恰好一次。"
+        f"{_module_contract()}"
         f"相邻上下文窗口：{context_messages}。\n"
         f"弹幕：{json.dumps(payload, ensure_ascii=False)}"
     )
 
 
 def _module_contract() -> str:
-    """Enumerate the fixed module taxonomy so API-only providers can enforce it."""
-    from .models import GAME_TAXONOMY, NON_GAME_MODULES
-
-    game_rules = "；".join(
-        f"{primary} 的二级模块只能选 {'、'.join(sorted(secondaries))}"
-        for primary, secondaries in GAME_TAXONOMY.items()
-    )
-    non_game = "、".join(sorted(NON_GAME_MODULES))
-    return (
-        f"\n固定模块映射（必须逐字使用，不得自创模块名）：{game_rules}。"
-        f"非游戏影响的一级和二级模块同名，只能选 {non_game}。"
-        "无法判断必须使用 其他/其他。"
-    )
+    """Give every provider the same code-to-meaning dictionary."""
+    return "\n固定 topic_code 映射（只输出代码，不得自创或翻译代码）：\n" + "\n".join(
+        f"{code}: {' > '.join(hierarchy)}" for code, hierarchy in TOPIC_CODES.items()
+    ) + "\n"
 
 
 _JSON_OUTPUT_CONTRACT = (
     "\n输出要求：只输出一个 JSON 对象，禁止解释性文字或 Markdown 代码块。"
     '结构为 {"labels": [{"message_id": string, "sentiment": "positive"|"neutral"|"negative", '
-    '"raw_topic": string, "impact_direction": "游戏影响"|"非游戏影响"|"无法判断", '
-    '"primary_module": string, "secondary_module": string, '
+    '"raw_topic": string, "topic_code": string（必须为上述固定代码之一）, '
     '"content_type": "游戏内容"|"直播互动"|"主播内容"|"技术与平台"|"日常话题"|"社区文化"|"其他", '
     '"message_type": "评价反馈"|"提问求助"|"信息陈述"|"玩笑梗图"|"表情或刷屏"|"机器人通知"|"其他", '
     '"is_bot": boolean, "needs_review": boolean, "confidence": "高"|"中"|"低", '
     '"interest_signal": boolean}]}，labels 的数量与顺序必须与输入 message_id 完全一致。'
-) + _module_contract()
+)
 
 
 def parse_label_response(output: str, expected_ids: list[str]) -> list[MessageLabel]:

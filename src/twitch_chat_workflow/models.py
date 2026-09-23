@@ -16,6 +16,29 @@ GAME_TAXONOMY = {
 }
 NON_GAME_MODULES = {"主播表现", "观众互动", "技术与直播质量", "系统与机器人", "生活闲聊", "其他非游戏内容"}
 
+# Stable wire codes distinguish even identically named leaves such as 其他.
+TOPIC_CODES = {
+    "game_cinematic": ("游戏影响", "剧情与世界观", "电影化过场/演出高光"),
+    "game_narrative": ("游戏影响", "剧情与世界观", "剧情内容/叙事情绪"),
+    "game_worldview": ("游戏影响", "剧情与世界观", "整体剧情世界观感受"),
+    "game_boss": ("游戏影响", "战斗体验", "BOSS战"),
+    "game_combat": ("游戏影响", "战斗体验", "常规战斗"),
+    "game_combat_overall": ("游戏影响", "战斗体验", "综合战斗感受"),
+    "game_movement": ("游戏影响", "探索与互动", "跑图与移动"),
+    "game_puzzle": ("游戏影响", "探索与互动", "调查与解谜"),
+    "game_character": ("游戏影响", "其他整体兴趣", "角色兴趣"),
+    "game_art_audio": ("游戏影响", "其他整体兴趣", "整体美术与音声兴趣"),
+    "game_interest": ("游戏影响", "其他整体兴趣", "游戏整体兴趣"),
+    "game_other": ("游戏影响", "其他", "其他"),
+    "non_game_streamer": ("非游戏影响", "主播表现", "主播表现"),
+    "non_game_audience": ("非游戏影响", "观众互动", "观众互动"),
+    "non_game_technical": ("非游戏影响", "技术与直播质量", "技术与直播质量"),
+    "non_game_bot": ("非游戏影响", "系统与机器人", "系统与机器人"),
+    "non_game_life": ("非游戏影响", "生活闲聊", "生活闲聊"),
+    "non_game_other": ("非游戏影响", "其他非游戏内容", "其他非游戏内容"),
+    "undetermined": ("无法判断", "其他", "其他"),
+}
+
 
 class LabelingConfig(BaseModel):
     """Optional semantic-labeling settings."""

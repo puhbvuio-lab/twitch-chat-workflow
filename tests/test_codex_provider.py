@@ -103,9 +103,8 @@ def test_codex_session_provider_requires_the_complete_fixed_taxonomy() -> None:
     assert label.secondary_module == "其他"
     assert label.needs_review is True
     assert runner.schema is not None
-    assert runner.schema["properties"]["labels"]["items"]["properties"]["impact_direction"]["enum"] == [
-        "游戏影响", "非游戏影响", "无法判断"
-    ]
+    codes = runner.schema["properties"]["labels"]["items"]["properties"]["topic_code"]["enum"]
+    assert {"game_other", "non_game_other", "undetermined"} <= set(codes)
 
 
 @pytest.mark.parametrize(
