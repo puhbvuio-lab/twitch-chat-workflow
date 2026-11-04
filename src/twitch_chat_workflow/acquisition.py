@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Literal, Protocol
 
 from .config import JobConfig
 from .io import JobPaths, runtime_cookie_source
 from .models import RawMessage
 from .state import StageStateStore, stage_fingerprint
+from .youtube import parse_live_chat
 
 
 class ChatDownloader(Protocol):
@@ -35,6 +39,47 @@ class TwitchChatDownloaderAdapter:
             options["cookies_from_browser"] = cookie_source
         for item in downloader.get_chat(vod_url, **{key: value for key, value in options.items() if value is not None}):
             yield _raw_message(item)
+
+
+class YouTubeChatDownloaderAdapter:
+    """Acquire YouTube replay chat with yt-dlp and normalize its JSONL output."""
+
+    def __init__(self, runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run) -> None:
+        self._runner = runner
+
+    def fetch(
+        self, vod_url: str, start_seconds: int | None, end_seconds: int | None, cookie_source: str | None
+    ) -> Iterable[RawMessage]:
+        with tempfile.TemporaryDirectory(prefix="youtube-chat-") as temporary:
+            template = str(Path(temporary) / "replay.%(ext)s")
+            command = [
+                sys.executable, "-m", "yt_dlp", "--skip-download", "--ignore-no-formats-error",
+                "--write-subs", "--sub-langs", "live_chat", "--sub-format", "json",
+                "--output", template,
+            ]
+            if cookie_source:
+                command.extend(["--cookies-from-browser", cookie_source])
+            command.append(vod_url)
+            try:
+                self._runner(command, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as error:
+                detail = (error.stderr or error.stdout or str(error)).strip()
+                raise RuntimeError(f"yt-dlp failed to acquire YouTube live-chat replay: {detail}") from error
+            candidates = sorted(Path(temporary).glob("replay.live_chat.json*"))
+            if not candidates:
+                raise RuntimeError("YouTube live-chat replay output was not created")
+            messages = list(parse_live_chat(candidates[0], start_seconds, end_seconds))
+            if not messages:
+                raise RuntimeError("YouTube live-chat replay contained no usable messages in the requested range")
+            yield from messages
+
+
+def build_downloader(platform: Literal["twitch", "youtube"]) -> ChatDownloader:
+    if platform == "twitch":
+        return TwitchChatDownloaderAdapter()
+    if platform == "youtube":
+        return YouTubeChatDownloaderAdapter()
+    raise ValueError(f"unsupported platform: {platform}")
 
 
 def _raw_message(item: Any) -> RawMessage:

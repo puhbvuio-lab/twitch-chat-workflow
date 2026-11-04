@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .acquisition import TwitchChatDownloaderAdapter, acquire_chat
+from .acquisition import acquire_chat, build_downloader
 from .aggregation import aggregate_stage
 from .config import JobConfig
 from .io import JobPaths
@@ -45,7 +45,7 @@ def run_stage(name: str, config_path: Path) -> Path | None:
     config = JobConfig.from_file(config_path)
     paths = JobPaths.create(config)
     if name == "acquire":
-        return acquire_chat(config, paths, TwitchChatDownloaderAdapter())
+        return acquire_chat(config, paths, build_downloader(config.resolved_platform))
     if name == "clean":
         return normalize_chat(paths.raw_chat / "raw_chat.jsonl", paths, config)
     if name == "label":
@@ -58,7 +58,7 @@ def run_stage(name: str, config_path: Path) -> Path | None:
 try:  # Typer is a declared dependency; the fallback keeps source-only checkout tests importable.
     import typer
 
-    app = typer.Typer(help="Resumable Twitch VOD chat workflow")
+    app = typer.Typer(help="Resumable Twitch and YouTube VOD chat workflow")
 
     def _command(name: str):
         def command(config: Path = typer.Option(..., "--config", exists=True, readable=True)) -> None:

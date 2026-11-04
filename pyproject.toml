@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "twitch-chat-workflow"
-version = "2.0.0"
-description = "Standalone, resumable Twitch VOD chat workflow"
+version = "2.1.0"
+description = "Standalone, resumable Twitch and YouTube VOD chat workflow"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2,<3", "typer>=0.12", "openpyxl>=3.1,<4"]
 
 [project.optional-dependencies]
-acquisition = ["twitch-chat-downloader>=0.2"]
+twitch = ["twitch-chat-downloader>=0.2"]
+youtube = ["yt-dlp>=2025.10.14"]
+acquisition = ["twitch-chat-downloader>=0.2", "yt-dlp>=2025.10.14"]
 
 dev = ["pytest>=7"]
 

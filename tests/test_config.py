@@ -56,3 +56,20 @@ def test_redacted_snapshot_excludes_cookie_source(tmp_path: Path) -> None:
     )
 
     assert "cookies_from_browser" not in config.redacted_snapshot()
+
+
+def test_platform_defaults_to_auto_and_is_resolved_from_url(tmp_path: Path) -> None:
+    config = JobConfig.from_file(write_config(tmp_path, {"vod_url": "https://youtu.be/abc"}))
+
+    assert config.platform == "auto"
+    assert config.resolved_platform == "youtube"
+
+
+def test_explicit_platform_url_mismatch_fails(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        {"platform": "youtube", "vod_url": "https://www.twitch.tv/videos/123"},
+    )
+
+    with pytest.raises(ValidationError, match="does not match"):
+        JobConfig.from_file(path)
