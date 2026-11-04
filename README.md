@@ -1,8 +1,8 @@
-# Twitch 弹幕工作流
+# Twitch / YouTube 弹幕工作流
 
-这是一个独立运行的 Twitch VOD 弹幕处理工具，可完成弹幕获取、清洗、可选语义标注和趋势聚合。它不会下载或分析视频、音频，也不依赖其他同级项目。
+这是一个独立运行的 Twitch VOD 与 YouTube 直播回放弹幕处理工具，可完成弹幕获取、清洗、可选语义标注和趋势聚合。它不会下载或分析视频、音频，也不依赖其他同级项目。
 
-当前版本：2.0.0。模型通过固定主题代码标注，程序自动生成三级标签；详情见下文“语义标注说明”。
+当前版本：2.1.0。采集层按链接自动选择 Twitch 或 YouTube 适配器，二者共用后续清洗、标注、聚合和 Excel 导出流程。
 
 ## 环境与安装
 
@@ -12,17 +12,20 @@
 python -m pip install -e ".[dev]"
 ```
 
-如需从 Twitch 获取弹幕，还需安装可选的下载依赖：
+如需获取 Twitch 与 YouTube 弹幕，安装组合采集依赖：
 
 ```powershell
 python -m pip install -e ".[acquisition]"
 ```
 
+也可只安装单个平台：`.[twitch]` 或 `.[youtube]`。
+
 ## 配置任务
 
 复制 `examples/job.json`，替换其中的 VOD URL，并选择输出目录。主要配置字段如下：
 
-- `vod_url`：必填，Twitch VOD 地址。
+- `platform`：可选，`auto`（默认）、`twitch` 或 `youtube`。显式平台必须与 URL 匹配。
+- `vod_url`：必填。支持 `twitch.tv/videos/...`、`youtube.com/watch?v=...`、`youtube.com/live/...` 和 `youtu.be/...`。
 - `start_seconds`、`end_seconds`：可选，只处理指定时间范围内的弹幕。
 - `output_dir`：任务输出根目录。
 - `cookies_from_browser`：可选，浏览器 Cookie 来源，例如 `chrome` 或 `edge`。
@@ -31,7 +34,9 @@ python -m pip install -e ".[acquisition]"
 - `labeling.codex_command`：Codex CLI 命令路径，默认为 `codex`。
 - `labeling.timeout_seconds`：单批 Codex 调用超时时间。
 
-`cookies_from_browser` 只在程序运行时传给下载适配器，不会写入任务配置快照或错误记录。请勿在 JSON 配置中填写 Cookie 内容、访问令牌或其他密钥。
+`cookies_from_browser` 只在程序运行时传给相应下载适配器，不会写入任务配置快照或错误记录。YouTube 受限、年龄限制或需要登录的回放通常需要浏览器 Cookie。请勿在 JSON 配置中填写 Cookie 内容、访问令牌或其他密钥。
+
+Twitch 示例见 `examples/job.json`，YouTube 示例见 `examples/youtube-job.json`。YouTube 采集使用 yt-dlp 的 `live_chat` 回放字幕；直播必须保留可访问的聊天回放，否则采集阶段会明确报错。
 
 ## 运行工作流
 
@@ -105,11 +110,11 @@ python -m twitch_chat_workflow run --config job.json
 
 工作簿只在所有标签批次成功后原子生成；已有完整文件不会被失败运行覆盖。
 
-本项目只处理 VOD 弹幕，不负责下载媒体、检查视频、分析音频、生成 CCV/历史数据或制作 Excel 报告。
+本项目只处理 Twitch/YouTube 回放弹幕，不负责下载媒体、检查视频、分析音频或生成 CCV/历史数据。
 
 ## 测试
 
-测试使用离线替身，不会访问 Twitch 或模型服务：
+测试使用离线替身，不会访问 Twitch、YouTube 或模型服务：
 
 ```powershell
 $env:PYTHONPATH = 'src'

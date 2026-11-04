@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .models import AggregationConfig, LabelingConfig
+from .platforms import resolve_platform
 
 
 class JobConfig(BaseModel):
@@ -16,6 +17,7 @@ class JobConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     vod_url: str = Field(min_length=1)
+    platform: Literal["auto", "twitch", "youtube"] = "auto"
     output_dir: Path = Path("output")
     start_seconds: int | None = Field(default=None, ge=0)
     end_seconds: int | None = Field(default=None, ge=0)
@@ -25,6 +27,7 @@ class JobConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_time_bounds(self) -> "JobConfig":
+        resolve_platform(self.platform, self.vod_url)
         if (
             self.start_seconds is not None
             and self.end_seconds is not None
@@ -32,6 +35,10 @@ class JobConfig(BaseModel):
         ):
             raise ValueError("end_seconds must be greater than start_seconds")
         return self
+
+    @property
+    def resolved_platform(self) -> Literal["twitch", "youtube"]:
+        return resolve_platform(self.platform, self.vod_url)
 
     @classmethod
     def from_file(cls, path: Path) -> "JobConfig":
